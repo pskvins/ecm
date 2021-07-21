@@ -279,9 +279,9 @@ int main() {
     std::vector<std::string> name;
     std::vector<std::string> sequence;
 
-    get_chr_and_seq("/Users/sukhwanpark/Downloads/Scer_genomic.fna", name, sequence);
+    get_chr_and_seq("/Users/sukhwanpark/Downloads/sacCer3.fa", name, sequence);
 
-    std::vector<CDS_info> all_CDS_info = get_CDS_info("/Users/sukhwanpark/Downloads/Scer_genomic_wo_header.gff");
+    std::vector<CDS_info> all_CDS_info = get_CDS_info("/Users/sukhwanpark/Downloads/sacCer3.ncbiRefSeq.gtf");
 
     std::vector<double> coding_freq = coding_codon_freq(name, sequence, all_CDS_info);
 
