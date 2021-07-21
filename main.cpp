@@ -4,7 +4,8 @@
 #include <algorithm>
 
 std::vector<std::string> codon_list = {"AAA", "AAC", "AAG", "AAT", "ACA", "ACC", "ACG", "ACT", "AGA", "AGC", "AGG", "AGT", "ATA", "ATC", "ATG", "ATT", "CAA", "CAC", "CAG", "CAT", "CCA", "CCC", "CCG", "CCT", "CGA", "CGC", "CGG", "CGT", "CTA", "CTC", "CTG", "CTT", "GAA", "GAC", "GAG", "GAT", "GCA", "GCC", "GCG", "GCT", "GGA", "GGC", "GGG", "GGT", "GTA", "GTC", "GTG", "GTT", "TAA", "TAC", "TAG", "TAT", "TCA", "TCC", "TCG", "TCT", "TGA", "TGC", "TGG", "TGT", "TTA", "TTC", "TTG", "TTT"};
-std::vector<double> PhyloCSF = {0.0357983654718, 0.0146634321466, 0.0209916853044, 0.0241608300459, 0.0196605104347, 0.0113786862615, 0.0029009138093, 0.0163015785126, 0.0225609755057, 0.0145991965297, 0.0181825729424, 0.0164781957079, 0.0186856678405, 0.0130405682814, 0.0179309987722, 0.0240968720195, 0.0181775551111, 0.0146957289426, 0.0210180199751, 0.0178777837456, 0.0179375335248, 0.014026410045, 0.00304930001685, 0.0181980546371, 0.00237235102112, 0.00247910724881, 0.00304553476624, 0.00292174613484, 0.0129216428963, 0.016886060241, 0.0212194293029, 0.021001239545, 0.0207025677211, 0.0101079314077, 0.0168739180256, 0.0130368421188, 0.0145312058205, 0.0117191223335, 0.00248094305692, 0.0145761834505, 0.0160538354021, 0.0117605522361, 0.0140380390381, 0.0114567437712, 0.0112780796487, 0.0101486396189, 0.0148519084459, 0.0147005486842, 0.0206773071958, 0.0111337585868, 0.012890738691, 0.0187059909187, 0.0197741432688, 0.0160489156219, 0.00237751747496, 0.0226108300737, 0.0197730187728, 0.0145713864549, 0.0179588059761, 0.0198394530312, 0.0208205335746, 0.0208303362555, 0.0183984258157, 0.0360132307673};
+std::vector<double> PhyloCSF_noncoding = {0.050652, 0.017255, 0.021160, 0.032474, 0.018026, 0.008973, 0.008527, 0.015506, 0.018850, 0.010325, 0.010458, 0.015506, 0.035649, 0.014782, 0.017158, 0.032474, 0.019614, 0.010055, 0.009977, 0.017158, 0.010003, 0.006173, 0.005336, 0.010458, 0.008072, 0.006082, 0.005336, 0.008527, 0.014070, 0.009981, 0.009977, 0.021160, 0.022403, 0.007536, 0.009981, 0.014782, 0.011453, 0.006492, 0.006082, 0.010325, 0.010352, 0.006492, 0.006173, 0.008973, 0.016223, 0.007536, 0.010055, 0.017255, 0.028967, 0.016223, 0.014070, 0.035649, 0.017417, 0.010352, 0.008072, 0.018850, 0.017417, 0.011453, 0.010003, 0.018026, 0.028967, 0.022403, 0.019614, 0.050652};
+std::vector<double> PhyloCSF_coding = {0.042558, 0.024513, 0.030138, 0.036293, 0.017995, 0.012479, 0.008171, 0.020108, 0.020893, 0.010055, 0.009439, 0.014649, 0.018597, 0.016947, 0.020770, 0.030135, 0.026648, 0.007776, 0.012271, 0.013887, 0.017633, 0.006954, 0.005409, 0.013514, 0.003213, 0.002707, 0.001910, 0.006327, 0.013506, 0.005776, 0.010752, 0.012711, 0.045143, 0.020107, 0.019335, 0.037538, 0.016269, 0.012098, 0.006217, 0.020106, 0.011230, 0.009807, 0.006088, 0.022349, 0.012260, 0.011228, 0.010804, 0.021456, 0.001050, 0.014490, 0.000519, 0.019166, 0.019118, 0.014150, 0.008827, 0.023470, 0.000684, 0.005011, 0.010397, 0.008147, 0.026476, 0.018304, 0.026556, 0.026866};
 
 struct CDS_info {
     std::string chrom;
@@ -48,9 +49,12 @@ void get_chr_and_seq(const char * file_path_fasta, std::vector<std::string>&name
     fasta.open(file_path_fasta);
     std::string line;
     getline(fasta, line);
+    std::string delimiter = " ";
+    size_t pos = 0;
     while(line.size() > 0) {
         if (line[0] == '>') {
-            name.emplace_back(line);
+            pos = line.find(delimiter);
+            name.emplace_back(line.substr(0, pos));
             getline(fasta, line);
             std::transform(line.begin(), line.end(), line.begin(), ::toupper);
             sequence.emplace_back(line);
@@ -80,6 +84,11 @@ std::vector<CDS_info> get_CDS_info(const char * file_path_gtf) {
     std::string delimiter = "\t";
     bool include = 0;
     getline(gtf, gtf_line);
+    if (gtf_line[0] == '#') {
+        while (gtf_line[0] == '#') {
+            getline(gtf, gtf_line);
+        }
+    }
     while (gtf_line.size() > 0) {
         uint queue = 0;
         while (queue < 8) {
@@ -175,25 +184,8 @@ bool compare_func(CDS_info first, CDS_info second) {
 }
 
 void mark_chrom_bool(std::vector<uint8_t> &chrom_bool, CDS_info elm_CDS_info) {
-    if (elm_CDS_info.strand == "+") {
-        for (uint32_t start = elm_CDS_info.start; start < elm_CDS_info.end; start++) {
-            if (chrom_bool[start] == 0) {
-                chrom_bool[start] = 1;
-            }
-            else if (chrom_bool[start] == 2) {
-                chrom_bool[start] =3;
-            }
-        }
-    }
-    else {
-        for (uint32_t start = elm_CDS_info.start; start < elm_CDS_info.end; start++) {
-            if (chrom_bool[start] == 0) {
-                chrom_bool[start] = 2;
-            }
-            else if (chrom_bool[start] == 1) {
-                chrom_bool[start] =3;
-            }
-        }
+    for (uint32_t start = elm_CDS_info.start + elm_CDS_info.additional; start < elm_CDS_info.end; start++) {
+        chrom_bool[start] = 1;
     }
 }
 
@@ -230,35 +222,42 @@ void get_complement_codon(std::vector<std::string> &codon_set, std::string &codo
 std::vector<double> noncoding_codon_freq(std::vector<std::string> &name, std::vector<std::string> &sequence, std::vector<CDS_info> &all_CDS_info) {
     std::vector<std::string> codon_set;
     std::string codon = "";
+    std::vector<std::string> new_sequences = {};
+    std::string new_sequence = "";
     std::sort(all_CDS_info.begin(), all_CDS_info.end(), compare_func);
     uint32_t pos_chrom = finding_index(name, all_CDS_info[0].chrom);
     std::vector<uint8_t> chrom_bool(sequence[pos_chrom].size(), 0);
     for (size_t index = 0; index < all_CDS_info.size(); index++) {
-        if (index == 0 || all_CDS_info[index - 1].chrom == all_CDS_info[index].chrom) {
+        if ((index == 0 || all_CDS_info[index - 1].chrom == all_CDS_info[index].chrom) && index != all_CDS_info.size() - 1) {
             mark_chrom_bool(chrom_bool, all_CDS_info[index]);
         }
         else if (all_CDS_info[index - 1].chrom != all_CDS_info[index].chrom) {
+            new_sequence = "";
             for (size_t pos = 0; pos < chrom_bool.size() - 2; pos++) {
-                if (chrom_bool[pos] == 3 || chrom_bool[pos + 1] == 3 || chrom_bool[pos+2] == 3) {
-                    while (chrom_bool[pos + 1] == 3 || chrom_bool[pos + 2] == 3) {
-                        pos++;
-                    }
-                }
-                else if (chrom_bool[pos] == 0 && chrom_bool[pos] == chrom_bool[pos + 1] && chrom_bool[pos] == chrom_bool[pos + 2]) {
-                    get_codon(codon_set, codon, sequence, pos_chrom, pos);
-                    get_complement_codon(codon_set, codon, sequence, pos_chrom, pos);
-                }
-                else if ((chrom_bool[pos] == 0 || chrom_bool[pos] == 2) || (chrom_bool[pos + 1] == 0 || chrom_bool[pos + 1] == 2) || (chrom_bool[pos + 2] == 0 || chrom_bool[pos + 2] == 2)) {
-                    get_codon(codon_set, codon, sequence, pos_chrom, pos);
-                }
-                else if ((chrom_bool[pos] == 0 || chrom_bool[pos] == 1) || (chrom_bool[pos + 1] == 0 || chrom_bool[pos + 1] == 1) || (chrom_bool[pos + 2] == 0 || chrom_bool[pos + 2] == 1)) {
-                    get_complement_codon(codon_set, codon, sequence, pos_chrom, pos);
+                if (chrom_bool[pos] == 0 && chrom_bool[pos] != 'N' && chrom_bool[pos] != '-') {
+                    new_sequence += sequence[pos_chrom][pos];
                 }
             }
+            new_sequences.emplace_back(new_sequence);
             pos_chrom = finding_index(name, all_CDS_info[index].chrom);
             chrom_bool.clear();
             chrom_bool.assign(sequence[pos_chrom].size(), 0);
             mark_chrom_bool(chrom_bool, all_CDS_info[index]);
+        }
+        else if (index == all_CDS_info.size() - 1) {
+            new_sequence = "";
+            for (size_t pos = 0; pos < chrom_bool.size() - 2; pos++) {
+                if (chrom_bool[pos] == 0 && chrom_bool[pos] != 'N' && chrom_bool[pos] != '-') {
+                    new_sequence += sequence[pos_chrom][pos];
+                }
+            }
+            new_sequences.emplace_back(new_sequence);
+        }
+    }
+    for (size_t big_size = 0; big_size < new_sequences.size(); big_size++) {
+        for (size_t small_size = 0; small_size < new_sequences[big_size].size() - 2; small_size += 3) {
+            get_codon(codon_set, codon, new_sequences, big_size, small_size);
+            get_complement_codon(codon_set, codon, new_sequences, big_size, small_size);
         }
     }
     std::vector<double> codon_count;
@@ -280,16 +279,24 @@ int main() {
     std::vector<std::string> name;
     std::vector<std::string> sequence;
 
-    get_chr_and_seq("/Users/sukhwanpark/Downloads/sacCer3.fa", name, sequence);
+    get_chr_and_seq("/Users/sukhwanpark/Downloads/Scer_genomic.fna", name, sequence);
 
-    std::vector<CDS_info> all_CDS_info = get_CDS_info("/Users/sukhwanpark/Downloads/sacCer3.ncbiRefSeq.gtf");
+    std::vector<CDS_info> all_CDS_info = get_CDS_info("/Users/sukhwanpark/Downloads/Scer_genomic_wo_header.gff");
+
+    std::vector<double> coding_freq = coding_codon_freq(name, sequence, all_CDS_info);
 
     std::vector<double> noncoding_freq = noncoding_codon_freq(name, sequence, all_CDS_info);
 
-    std::vector<double> diff;
+    std::vector<double> diff_coding;
+
+    for (size_t i = 0; i < coding_freq.size(); i++) {
+        diff_coding.emplace_back(PhyloCSF_coding[i] - coding_freq[i]);
+    }
+
+    std::vector<double> diff_noncoding;
 
     for (size_t i = 0; i < noncoding_freq.size(); i++) {
-        diff.emplace_back(PhyloCSF[i] - noncoding_freq[i]);
+        diff_noncoding.emplace_back(PhyloCSF_noncoding[i] - noncoding_freq[i]);
     }
 
     return 0;
