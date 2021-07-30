@@ -1,10 +1,22 @@
 #include "njtree.h"
-#include "main.cpp"
 #include <iostream>
 #include <fstream>
 #include <vector>
 #include <algorithm>
 
+
+uint32_t finding_index(std::string * name,std::string chrom) {
+    int pos_chrom = 0;
+    for (size_t pos = 0; pos < sizeof(name); pos++) {
+        if (name[pos] == ">" + chrom) {
+            break;
+        }
+        else {
+            pos_chrom++;
+        }
+    }
+    return pos_chrom;
+}
 
 struct maf_info {
     std::string name;
@@ -42,7 +54,10 @@ uint32_t ** from_maf_to_distance_matrix (const char *file_path, int species_num)
     for (size_t i = 0; i < species_num; i++) {
         distance_matrix[i] = new uint32_t [species_num];
     }
-    std::vector<std::string> names(species_num);
+    std::string names[species_num];
+    for (size_t i = 0; i < sizeof(names); i++) {
+        names[i] = "Null";
+    }
     std::ifstream maf;
     maf.open(file_path);
     std::string line;
@@ -68,10 +83,15 @@ uint32_t ** from_maf_to_distance_matrix (const char *file_path, int species_num)
                 read_maf(delimiter, line, block);
                 getline(maf, line);
             }
-            if (names.size() != species_num) {
+            if (std::find(names, names + species_num, "Null") != names + species_num) {
                 for (size_t i = 0; i < block.size() ; i++) {
-                    if (std::find(names.begin(), names.end(), block[i].name) == names.end()) {
-                        names.emplace_back(block[i].name);
+                    if (std::find(names, names + species_num, block[i].name) == names + species_num) {
+                        for (size_t j = 0; j < sizeof(names); j++) {
+                            if (names[j] == "Null") {
+                                names[j] = block[i].name;
+                                break;
+                            }
+                        }
                     }
                 }
             }
@@ -92,7 +112,10 @@ uint32_t ** from_maf_to_distance_matrix (const char *file_path, int species_num)
             getline(maf, line);
         }
     }
-    delete [] distance_matrix[0];
+    for (size_t i = 0; i < species_num; i++) {
+        delete [] distance_matrix[i];
+    }
     delete [] distance_matrix;
     return distance_matrix;
 }
+
