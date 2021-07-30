@@ -2,8 +2,9 @@
 #include <fstream>
 #include <vector>
 #include <algorithm>
+#include "njtree.h"
 
-std::vector<std::string> codon_list = {"AAA", "AAC", "AAG", "AAT", "ACA", "ACC", "ACG", "ACT", "AGA", "AGC", "AGG", "AGT", "ATA", "ATC", "ATG", "ATT", "CAA", "CAC", "CAG", "CAT", "CCA", "CCC", "CCG", "CCT", "CGA", "CGC", "CGG", "CGT", "CTA", "CTC", "CTG", "CTT", "GAA", "GAC", "GAG", "GAT", "GCA", "GCC", "GCG", "GCT", "GGA", "GGC", "GGG", "GGT", "GTA", "GTC", "GTG", "GTT", "TAA", "TAC", "TAG", "TAT", "TCA", "TCC", "TCG", "TCT", "TGA", "TGC", "TGG", "TGT", "TTA", "TTC", "TTG", "TTT"};
+static std::vector<std::string> codon_list = {"AAA", "AAC", "AAG", "AAT", "ACA", "ACC", "ACG", "ACT", "AGA", "AGC", "AGG", "AGT", "ATA", "ATC", "ATG", "ATT", "CAA", "CAC", "CAG", "CAT", "CCA", "CCC", "CCG", "CCT", "CGA", "CGC", "CGG", "CGT", "CTA", "CTC", "CTG", "CTT", "GAA", "GAC", "GAG", "GAT", "GCA", "GCC", "GCG", "GCT", "GGA", "GGC", "GGG", "GGT", "GTA", "GTC", "GTG", "GTT", "TAA", "TAC", "TAG", "TAT", "TCA", "TCC", "TCG", "TCT", "TGA", "TGC", "TGG", "TGT", "TTA", "TTC", "TTG", "TTT"};
 std::vector<double> PhyloCSF_noncoding = {0.050652, 0.017255, 0.021160, 0.032474, 0.018026, 0.008973, 0.008527, 0.015506, 0.018850, 0.010325, 0.010458, 0.015506, 0.035649, 0.014782, 0.017158, 0.032474, 0.019614, 0.010055, 0.009977, 0.017158, 0.010003, 0.006173, 0.005336, 0.010458, 0.008072, 0.006082, 0.005336, 0.008527, 0.014070, 0.009981, 0.009977, 0.021160, 0.022403, 0.007536, 0.009981, 0.014782, 0.011453, 0.006492, 0.006082, 0.010325, 0.010352, 0.006492, 0.006173, 0.008973, 0.016223, 0.007536, 0.010055, 0.017255, 0.028967, 0.016223, 0.014070, 0.035649, 0.017417, 0.010352, 0.008072, 0.018850, 0.017417, 0.011453, 0.010003, 0.018026, 0.028967, 0.022403, 0.019614, 0.050652};
 std::vector<double> PhyloCSF_coding = {0.042558, 0.024513, 0.030138, 0.036293, 0.017995, 0.012479, 0.008171, 0.020108, 0.020893, 0.010055, 0.009439, 0.014649, 0.018597, 0.016947, 0.020770, 0.030135, 0.026648, 0.007776, 0.012271, 0.013887, 0.017633, 0.006954, 0.005409, 0.013514, 0.003213, 0.002707, 0.001910, 0.006327, 0.013506, 0.005776, 0.010752, 0.012711, 0.045143, 0.020107, 0.019335, 0.037538, 0.016269, 0.012098, 0.006217, 0.020106, 0.011230, 0.009807, 0.006088, 0.022349, 0.012260, 0.011228, 0.010804, 0.021456, 0.001050, 0.014490, 0.000519, 0.019166, 0.019118, 0.014150, 0.008827, 0.023470, 0.000684, 0.005011, 0.010397, 0.008147, 0.026476, 0.018304, 0.026556, 0.026866};
 
@@ -50,8 +51,8 @@ void get_chr_and_seq(const char * file_path_fasta, std::vector<std::string>&name
     std::string line;
     getline(fasta, line);
     std::string delimiter = " ";
-    size_t pos = 0;
-    while(line.size() > 0) {
+    size_t pos;
+    while(!line.empty()) {
         if (line[0] == '>') {
             pos = line.find(delimiter);
             name.emplace_back(line.substr(0, pos));
@@ -59,7 +60,7 @@ void get_chr_and_seq(const char * file_path_fasta, std::vector<std::string>&name
             std::transform(line.begin(), line.end(), line.begin(), ::toupper);
             sequence.emplace_back(line);
             getline(fasta, line);
-            while (line.size() > 0 && line[0] != '>') {
+            while (!line.empty() && line[0] != '>') {
                 std::transform(line.begin(), line.end(), line.begin(), ::toupper);
                 sequence.back() += line;
                 getline(fasta, line);
@@ -80,16 +81,22 @@ std::vector<CDS_info> get_CDS_info(const char * file_path_gtf) {
     std::string temp_strand;
     uint temp_additional;
     std::string gtf_line;
-    size_t pos = 0;
+    size_t pos;
     std::string delimiter = "\t";
-    bool include = 0;
+    bool include = false;
     getline(gtf, gtf_line);
     if (gtf_line[0] == '#') {
         while (gtf_line[0] == '#') {
             getline(gtf, gtf_line);
         }
     }
-    while (gtf_line.size() > 0) {
+    while (!gtf_line.empty()) {
+        if (gtf_line[0] == '#') {
+            while (gtf_line[0] == '#') {
+                getline(gtf, gtf_line);
+            }
+            continue;
+        }
         uint queue = 0;
         while (queue < 8) {
             pos = gtf_line.find(delimiter);
@@ -97,9 +104,9 @@ std::vector<CDS_info> get_CDS_info(const char * file_path_gtf) {
                 temp_chrom = gtf_line.substr(0, pos);
             } else if (queue == 2) {
                 if (gtf_line.substr(0, pos) == "CDS") {
-                    include = 1;
+                    include = true;
                 } else {
-                    include = 0;
+                    include = false;
                 }
             } else if (queue == 3) {
                 temp_start = static_cast<uint32_t>(std::stoul(gtf_line.substr(0, pos))) - 1;
@@ -124,6 +131,36 @@ std::vector<CDS_info> get_CDS_info(const char * file_path_gtf) {
     return all_CDS_info;
 }
 
+void get_codon(std::vector<std::string> &codon_set, std::string &codon, std::vector<std::string> &sequence, uint32_t pos_chrom, size_t pos) {
+    codon = "";
+    for (size_t i = 0; i < 3; i++) {
+        codon += sequence[pos_chrom][pos + i];
+    }
+    for (int j = 0; j < 3; j++) {
+        if (codon[j] == 'N' || codon[j] == '-') {
+            codon = "";
+        }
+    }
+    if (codon.size() > 0) {
+        codon_set.emplace_back(codon);
+    }
+}
+
+void get_complement_codon(std::vector<std::string> &codon_set, std::string &codon, std::vector<std::string> &sequence, uint32_t pos_chrom, size_t pos) {
+    codon = "";
+    for (int i = 2; i >= 0; i--) {
+        codon += complement_base(sequence[pos_chrom][pos + i]);
+    }
+    for (int j = 0; j < 3; j++) {
+        if (codon[j] == 'N' || codon[j] == '-') {
+            codon = "";
+        }
+    }
+    if (codon.size() > 0) {
+        codon_set.emplace_back(codon);
+    }
+}
+
 uint32_t finding_index(std::vector<std::string> &name,std::string chrom) {
     int pos_chrom = 0;
     for (size_t pos = 0; pos < name.size(); pos++) {
@@ -140,6 +177,7 @@ uint32_t finding_index(std::vector<std::string> &name,std::string chrom) {
 std::vector<double> coding_codon_freq(std::vector<std::string> &name, std::vector<std::string> &sequence, std::vector<CDS_info> &all_CDS_info) {
     // extract codons and calculate codon frequencies
     std::vector<std::string> codon_set;
+    std::string codon = "";
     for (size_t num = 0; num < all_CDS_info.size(); num++) {
         uint32_t pos_chrom = finding_index(name, all_CDS_info[num].chrom);
         if (pos_chrom >= name.size()) {
@@ -147,7 +185,6 @@ std::vector<double> coding_codon_freq(std::vector<std::string> &name, std::vecto
         }
         if (all_CDS_info[num].strand == "+") {
             for (uint32_t start = all_CDS_info[num].start + all_CDS_info[num].additional; start + 2 < all_CDS_info[num].end; start += 3) {
-                std::string codon = "";
                 for (int i = 0; i < 3; i++) {
                     codon += sequence[pos_chrom][start + i];
                 }
@@ -189,35 +226,6 @@ void mark_chrom_bool(std::vector<uint8_t> &chrom_bool, CDS_info elm_CDS_info) {
     }
 }
 
-void get_codon(std::vector<std::string> &codon_set, std::string &codon, std::vector<std::string> &sequence, uint32_t pos_chrom, size_t pos) {
-    codon = "";
-    for (size_t i = 0; i < 3; i++) {
-        codon += sequence[pos_chrom][pos + i];
-    }
-    for (int j = 0; j < 3; j++) {
-        if (codon[j] == 'N' || codon[j] == '-') {
-            codon = "";
-        }
-    }
-    if (codon.size() > 0) {
-        codon_set.emplace_back(codon);
-    }
-}
-
-void get_complement_codon(std::vector<std::string> &codon_set, std::string &codon, std::vector<std::string> &sequence, uint32_t pos_chrom, size_t pos) {
-    codon = "";
-    for (int i = 2; i >= 0; i--) {
-        codon += complement_base(sequence[pos_chrom][pos + i]);
-    }
-    for (int j = 0; j < 3; j++) {
-        if (codon[j] == 'N' || codon[j] == '-') {
-            codon = "";
-        }
-    }
-    if (codon.size() > 0) {
-        codon_set.emplace_back(codon);
-    }
-}
 
 std::vector<double> noncoding_codon_freq(std::vector<std::string> &name, std::vector<std::string> &sequence, std::vector<CDS_info> &all_CDS_info) {
     std::vector<std::string> codon_set;
@@ -279,9 +287,9 @@ int main() {
     std::vector<std::string> name;
     std::vector<std::string> sequence;
 
-    get_chr_and_seq("/Users/sukhwanpark/Downloads/sacCer3.fa", name, sequence);
+    get_chr_and_seq("/Users/sukhwanpark/Downloads/Scer_genomic.fna", name, sequence);
 
-    std::vector<CDS_info> all_CDS_info = get_CDS_info("/Users/sukhwanpark/Downloads/sacCer3.ncbiRefSeq.gtf");
+    std::vector<CDS_info> all_CDS_info = get_CDS_info("/Users/sukhwanpark/Downloads/Scer_genomic.gff");
 
     std::vector<double> coding_freq = coding_codon_freq(name, sequence, all_CDS_info);
 
@@ -290,13 +298,23 @@ int main() {
     std::vector<double> diff_coding;
 
     for (size_t i = 0; i < coding_freq.size(); i++) {
-        diff_coding.emplace_back(PhyloCSF_coding[i] - coding_freq[i]);
+        diff_coding.emplace_back(100 * (PhyloCSF_coding[i] - coding_freq[i]) / PhyloCSF_coding[i]);
     }
 
     std::vector<double> diff_noncoding;
 
     for (size_t i = 0; i < noncoding_freq.size(); i++) {
-        diff_noncoding.emplace_back(PhyloCSF_noncoding[i] - noncoding_freq[i]);
+        diff_noncoding.emplace_back(100 * (PhyloCSF_noncoding[i] - noncoding_freq[i]) / PhyloCSF_noncoding[i]);
+    }
+
+    double codon_sum;
+    for (size_t i=0; i < PhyloCSF_coding.size(); i++) {
+        codon_sum += PhyloCSF_coding[i];
+    }
+
+    double emp_codon_sum;
+    for (size_t i = 0; i < coding_freq.size(); i++) {
+        emp_codon_sum += coding_freq[i];
     }
 
     return 0;
