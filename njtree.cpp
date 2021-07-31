@@ -3,20 +3,9 @@
 #include <fstream>
 #include <vector>
 #include <algorithm>
+#include "main.cpp"
 
 
-uint32_t finding_index(std::string * name,std::string chrom) {
-    int pos_chrom = 0;
-    for (size_t pos = 0; pos < sizeof(name); pos++) {
-        if (name[pos] == ">" + chrom) {
-            break;
-        }
-        else {
-            pos_chrom++;
-        }
-    }
-    return pos_chrom;
-}
 
 struct maf_info {
     std::string name;
@@ -49,14 +38,10 @@ void read_maf(std::string delimiter, std::string line, std::vector<maf_info> &bl
     block.emplace_back(name, seq, length);
 }
 
-uint32_t ** from_maf_to_distance_matrix (const char *file_path, int species_num) {
+uint32_t ** from_maf_to_distance_matrix (std::vector<std::string> &names, const char *file_path, int species_num) {
     uint32_t **distance_matrix = new uint32_t * [species_num];
     for (size_t i = 0; i < species_num; i++) {
         distance_matrix[i] = new uint32_t [species_num];
-    }
-    std::string names[species_num];
-    for (size_t i = 0; i < sizeof(names); i++) {
-        names[i] = "Null";
     }
     std::ifstream maf;
     maf.open(file_path);
@@ -83,15 +68,10 @@ uint32_t ** from_maf_to_distance_matrix (const char *file_path, int species_num)
                 read_maf(delimiter, line, block);
                 getline(maf, line);
             }
-            if (std::find(names, names + species_num, "Null") != names + species_num) {
+            if (names.size() != species_num) {
                 for (size_t i = 0; i < block.size() ; i++) {
-                    if (std::find(names, names + species_num, block[i].name) == names + species_num) {
-                        for (size_t j = 0; j < sizeof(names); j++) {
-                            if (names[j] == "Null") {
-                                names[j] = block[i].name;
-                                break;
-                            }
-                        }
+                    if (std::find(names.begin(), names.end(), block[i].name) == names.end()) {
+                        names.emplace_back(block[i].name);
                     }
                 }
             }

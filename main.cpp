@@ -204,7 +204,7 @@ std::vector<double> coding_codon_freq(std::vector<std::string> &name, std::vecto
         }
     }
     std::vector<double> codon_count;
-    for (size_t codon_index = 0; codon_index < codon_list.size(); codon_index++) {
+    for (size_t codon_index = 0; codon_index < sizeof(codon_list); codon_index++) {
         codon_count.emplace_back(std::count(codon_set.begin(), codon_set.end(), codon_list[codon_index]));
     }
     double  codon_sum;
@@ -270,7 +270,7 @@ std::vector<double> noncoding_codon_freq(std::vector<std::string> &name, std::ve
         }
     }
     std::vector<double> codon_count;
-    for (size_t codon_index = 0; codon_index < codon_list.size(); codon_index++) {
+    for (size_t codon_index = 0; codon_index < sizeof(codon_list); codon_index++) {
         codon_count.emplace_back(std::count(codon_set.begin(), codon_set.end(), codon_list[codon_index]));
     }
     double  codon_sum;
@@ -296,6 +296,8 @@ int main() {
 
     std::vector<double> noncoding_freq = noncoding_codon_freq(name, sequence, all_CDS_info);
 
+    std::vector<std::string> names;
+
     std::vector<double> diff_coding;
 
     for (size_t i = 0; i < coding_freq.size(); i++) {
@@ -309,7 +311,7 @@ int main() {
     }
 
     double codon_sum;
-    for (size_t i=0; i < PhyloCSF_coding.size(); i++) {
+    for (size_t i=0; i < sizeof(PhyloCSF_coding); i++) {
         codon_sum += PhyloCSF_coding[i];
     }
 
