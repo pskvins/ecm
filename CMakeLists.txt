@@ -3,4 +3,4 @@ project(ecm)
 
 set(CMAKE_CXX_STANDARD 14)
 
-add_executable(ecm main.cpp njtree.cpp njtree.h)
+add_executable(ecm main.cpp)

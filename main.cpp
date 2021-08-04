@@ -56,7 +56,7 @@ void get_chr_and_seq(const char * file_path_fasta, std::vector<std::string>&name
     while(!line.empty()) {
         if (line[0] == '>') {
             pos = line.find(delimiter);
-            name.emplace_back(line.substr(0, pos));
+            name.emplace_back(line.substr(1, pos - 1));
             getline(fasta, line);
             std::transform(line.begin(), line.end(), line.begin(), ::toupper);
             sequence.emplace_back(line);
@@ -162,18 +162,6 @@ void get_complement_codon(std::vector<std::string> &codon_set, std::string &codo
     }
 }
 
-uint32_t finding_index(std::vector<std::string> &name,std::string chrom) {
-    int pos_chrom = 0;
-    for (size_t pos = 0; pos < name.size(); pos++) {
-        if (name[pos] == ">" + chrom) {
-            break;
-        }
-        else {
-            pos_chrom++;
-        }
-    }
-    return pos_chrom;
-}
 
 std::vector<double> coding_codon_freq(std::vector<std::string> &name, std::vector<std::string> &sequence, std::vector<CDS_info> &all_CDS_info) {
     // extract codons and calculate codon frequencies
@@ -204,7 +192,7 @@ std::vector<double> coding_codon_freq(std::vector<std::string> &name, std::vecto
         }
     }
     std::vector<double> codon_count;
-    for (size_t codon_index = 0; codon_index < sizeof(codon_list); codon_index++) {
+    for (size_t codon_index = 0; codon_index < sizeof(codon_list) / sizeof(codon_list[0]); codon_index++) {
         codon_count.emplace_back(std::count(codon_set.begin(), codon_set.end(), codon_list[codon_index]));
     }
     double  codon_sum;
@@ -270,7 +258,7 @@ std::vector<double> noncoding_codon_freq(std::vector<std::string> &name, std::ve
         }
     }
     std::vector<double> codon_count;
-    for (size_t codon_index = 0; codon_index < sizeof(codon_list); codon_index++) {
+    for (size_t codon_index = 0; codon_index < sizeof(codon_list) / sizeof(codon_list[0]); codon_index++) {
         codon_count.emplace_back(std::count(codon_set.begin(), codon_set.end(), codon_list[codon_index]));
     }
     double  codon_sum;
@@ -296,8 +284,6 @@ int main() {
 
     std::vector<double> noncoding_freq = noncoding_codon_freq(name, sequence, all_CDS_info);
 
-    std::vector<std::string> names;
-
     std::vector<double> diff_coding;
 
     for (size_t i = 0; i < coding_freq.size(); i++) {
@@ -311,7 +297,7 @@ int main() {
     }
 
     double codon_sum;
-    for (size_t i=0; i < sizeof(PhyloCSF_coding); i++) {
+    for (size_t i=0; i < sizeof(PhyloCSF_coding) / sizeof(PhyloCSF_coding[0]); i++) {
         codon_sum += PhyloCSF_coding[i];
     }
 
@@ -319,6 +305,10 @@ int main() {
     for (size_t i = 0; i < coding_freq.size(); i++) {
         emp_codon_sum += coding_freq[i];
     }
+
+    std::vector<std::string> names;
+
+    get_nj_tree(names, "/Users/sukhwanpark/Downloads/Scer_7way_only7_tab.maf", 7);
 
     return 0;
 }
