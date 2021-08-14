@@ -34,35 +34,17 @@ struct newick_graph {
             next(next) {}
 
     void insert_inbetween_end_n_target(newick_graph &end, newick_graph *nodes, size_t count, newick_graph &child) {
-        child.next = nodes + count;
+        child.next = &nodes[count];
         nodes[count].previous.emplace_back(&child);
         nodes[count].next = &end;
         for (size_t pos = 0; pos < end.previous.size(); pos++) {
             if (end.previous[pos] == &child) {
                 end.previous.erase(end.previous.begin() + pos);
-                break;
             }
         }
-        end.previous.emplace_back(nodes + count);
-    }
-};
-
-struct newick_iterator {
-    newick_graph *now;
-    newick_graph *parent;
-
-    newick_iterator(newick_graph *now, newick_graph *parent) :
-            now(now),
-            parent(parent) {}
-
-    void to_parent(void) {
-        now = parent;
-        parent = parent->next;
-    }
-
-    void to_end(newick_graph *end) {
-        parent = end;
-        now = end;
+        if (std::find(end.previous.begin(), end.previous.end(), &nodes[count]) == end.previous.end()) {
+            end.previous.emplace_back(&nodes[count]);
+        }
     }
 };
 
@@ -77,9 +59,36 @@ struct newick_start {
             next(next) {}
 
     void connect_start(newick_start &start, newick_graph *current, size_t pos, newick_graph &end) {
-        start.next.emplace_back(current + pos);
+        start.next.emplace_back(&current[pos]);
         current[pos].next = &end;
-        end.previous.emplace_back(current + pos);
+        end.previous.emplace_back(&current[pos]);
+    }
+};
+
+struct newick_iterator {
+    newick_graph *now;
+    newick_graph *parent;
+    newick_start start_point;
+
+    newick_iterator(newick_start &start_point) {
+        now = start_point.next[0];
+        parent = now->next;
+    }
+
+    newick_iterator(newick_graph *now, newick_graph *parent, newick_start &start_point) :
+            now(now),
+            parent(parent),
+            start_point(start_point) {}
+
+
+    void to_start(size_t pos) {
+        now = start_point.next[pos];
+        parent = now->next;
+    }
+
+    void to_parent(void) {
+        now = parent;
+        parent = parent->next;
     }
 };
 

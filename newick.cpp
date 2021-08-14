@@ -9,7 +9,7 @@
 #include <fstream>
 
 
-void update_nodes(newick_graph *nodes, size_t &count, std::string &lines, size_t &left_pos, size_t &right_pos, newick_start start_point, newick_graph end_point) {
+void update_nodes(newick_graph *nodes, size_t &count, std::string &lines, size_t &left_pos, size_t &right_pos, newick_start &start_point, newick_graph &end_point) {
     size_t temp_pos_comma;
     size_t temp_pos_colon_first;
     size_t temp_pos_colon_second;
@@ -61,9 +61,7 @@ void update_nodes(newick_graph *nodes, size_t &count, std::string &lines, size_t
     right_pos = lines.find(')');
 }
 
-newick_graph *process_newick(const char * newick_file_path) {
-    newick_start start_point;
-    newick_graph end_point;
+newick_graph *process_newick(const char * newick_file_path, newick_start &start_point, newick_graph &end_point) {
     std::ifstream newick;
     newick.open(newick_file_path);
     std::string line;
@@ -79,13 +77,11 @@ newick_graph *process_newick(const char * newick_file_path) {
         getline(newick, line);
     }
     // make binary tree
-    uint16_t nodes_count = std::count(lines.begin(), lines.end(), ':') + 1;
+    uint16_t nodes_count = std::count(lines.begin(), lines.end(), ':');
     newick_graph *nodes = new newick_graph[nodes_count];
     size_t left_pos;
     size_t right_pos;
-    const char left_delimiter = '(';
-    const char right_delimiter = ')';
-    right_pos = lines.find(right_delimiter);
+    right_pos = lines.find(')');
     size_t count = 0;
     while (right_pos != std::string::npos) {
         for (size_t pos = right_pos; pos >= 0; pos--) {

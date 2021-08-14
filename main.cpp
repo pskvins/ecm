@@ -272,7 +272,19 @@ std::vector<double> noncoding_codon_freq(std::vector<std::string> &name, std::ve
 
 
 int main() {
-    newick_graph *nodes = process_newick("/Users/sukhwanpark/Downloads/100vertebrates.nh");
+    newick_start start_point;
+    newick_graph end_point;
+
+    newick_graph *nodes = process_newick("/Users/sukhwanpark/Downloads/100vertebrates.nh", start_point, end_point);
+
+    newick_iterator iterate_newick(start_point);
+    for (size_t pos = 0; pos < start_point.next.size(); pos++) {
+        iterate_newick.to_start(pos);
+        while (iterate_newick.parent != &end_point) {
+            iterate_newick.to_parent();
+        }
+    }
+
 
     return 0;
 }
