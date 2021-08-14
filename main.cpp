@@ -1,10 +1,8 @@
 #include <iostream>
-#include <fstream>
 #include <vector>
 #include <algorithm>
-#include "njtree.h"
 #include "njtree.cpp"
-#include "expectation_step.cpp"
+#include "newick.cpp"
 
 static std::string codon_list[64] = {"AAA", "AAC", "AAG", "AAT", "ACA", "ACC", "ACG", "ACT", "AGA", "AGC", "AGG", "AGT", "ATA", "ATC", "ATG", "ATT", "CAA", "CAC", "CAG", "CAT", "CCA", "CCC", "CCG", "CCT", "CGA", "CGC", "CGG", "CGT", "CTA", "CTC", "CTG", "CTT", "GAA", "GAC", "GAG", "GAT", "GCA", "GCC", "GCG", "GCT", "GGA", "GGC", "GGG", "GGT", "GTA", "GTC", "GTG", "GTT", "TAA", "TAC", "TAG", "TAT", "TCA", "TCC", "TCG", "TCT", "TGA", "TGC", "TGG", "TGT", "TTA", "TTC", "TTG", "TTT"};
 double PhyloCSF_noncoding[64] = {0.050652, 0.017255, 0.021160, 0.032474, 0.018026, 0.008973, 0.008527, 0.015506, 0.018850, 0.010325, 0.010458, 0.015506, 0.035649, 0.014782, 0.017158, 0.032474, 0.019614, 0.010055, 0.009977, 0.017158, 0.010003, 0.006173, 0.005336, 0.010458, 0.008072, 0.006082, 0.005336, 0.008527, 0.014070, 0.009981, 0.009977, 0.021160, 0.022403, 0.007536, 0.009981, 0.014782, 0.011453, 0.006492, 0.006082, 0.010325, 0.010352, 0.006492, 0.006173, 0.008973, 0.016223, 0.007536, 0.010055, 0.017255, 0.028967, 0.016223, 0.014070, 0.035649, 0.017417, 0.010352, 0.008072, 0.018850, 0.017417, 0.011453, 0.010003, 0.018026, 0.028967, 0.022403, 0.019614, 0.050652};
@@ -274,44 +272,7 @@ std::vector<double> noncoding_codon_freq(std::vector<std::string> &name, std::ve
 
 
 int main() {
-    std::vector<std::string> name;
-    std::vector<std::string> sequence;
-
-    get_chr_and_seq("/Users/sukhwanpark/Downloads/Scer_genomic.fna", name, sequence);
-
-    std::vector<CDS_info> all_CDS_info = get_CDS_info("/Users/sukhwanpark/Downloads/Scer_genomic.gff");
-
-    std::vector<double> coding_freq = coding_codon_freq(name, sequence, all_CDS_info);
-
-    std::vector<double> noncoding_freq = noncoding_codon_freq(name, sequence, all_CDS_info);
-
-    std::vector<double> diff_coding;
-
-    for (size_t i = 0; i < coding_freq.size(); i++) {
-        diff_coding.emplace_back(100 * (PhyloCSF_coding[i] - coding_freq[i]) / PhyloCSF_coding[i]);
-    }
-
-    std::vector<double> diff_noncoding;
-
-    for (size_t i = 0; i < noncoding_freq.size(); i++) {
-        diff_noncoding.emplace_back(100 * (PhyloCSF_noncoding[i] - noncoding_freq[i]) / PhyloCSF_noncoding[i]);
-    }
-
-    double codon_sum;
-    for (size_t i=0; i < sizeof(PhyloCSF_coding) / sizeof(PhyloCSF_coding[0]); i++) {
-        codon_sum += PhyloCSF_coding[i];
-    }
-
-    double emp_codon_sum;
-    for (size_t i = 0; i < coding_freq.size(); i++) {
-        emp_codon_sum += coding_freq[i];
-    }
-
-    std::vector<std::string> names;
-
-    get_nj_tree(names, "/Users/sukhwanpark/Downloads/Scer_7way_only7_tab.maf", 7);
-
-    process_newick("/Users/sukhwanpark/Downloads/100vertebrates.nh")
+    newick_graph *nodes = process_newick("/Users/sukhwanpark/Downloads/100vertebrates.nh");
 
     return 0;
 }
