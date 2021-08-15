@@ -70,7 +70,7 @@ struct newick_iterator {
     newick_graph *parent;
     newick_start start_point;
 
-    newick_iterator(newick_start &start_point) {
+    newick_iterator(newick_start &start_point) : start_point(start_point) {
         now = start_point.next[0];
         parent = now->next;
     }
