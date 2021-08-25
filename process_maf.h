@@ -11,15 +11,27 @@ class process_maf {
 
 };
 
-const std::map<std::string, char> codon_to_char {{"AAA", 000}, {"AAC", 001}, {"AAG", 002}, {"AAT", 003}, {"ACA", 004}, {"ACC", 005}, {"ACG", 006},{"ACT", 007},
-                                                 {"AGA", 008}, {"AGC", 009}, {"AGG", 010}, {"AGT", 011}, {"ATA", 012}, {"ATC", 013}, {"ATG", 014}, {"ATT", 015},
-                                                 {"CAA", 016}, {"CAC", 017}, {"CAG", 018}, {"CAT", 019}, {"CCA", 020}, {"CCC", 021}, {"CCG", 022}, {"CCT", 023},
-                                                 {"CGA", 024}, {"CGC", 025}, {"CGG", 026}, {"CGT", 027}, {"CTA", 028}, {"CTC", 029}, {"CTG", 030}, {"CTT", 031},
-                                                 {"GAA", 032}, {"GAC", 033}, {"GAG", 034}, {"GAT", 035}, {"GCA", 036}, {"GCC", 037}, {"GCG", 038}, {"GCT", 039},
-                                                 {"GGA", 040}, {"GGC", 041}, {"GGG", 042}, {"GGT", 043}, {"GTA", 044}, {"GTC", 045}, {"GTG", 046}, {"GTT", 047},
-                                                 {"TAA", 048}, {"TAC", 049}, {"TAG", 050}, {"TAT", 051}, {"TCA", 052}, {"TCC", 053}, {"TCG", 054}, {"TCT", 055},
-                                                 {"TGA", 056}, {"TGC", 057}, {"TGG", 058}, {"TGT", 059}, {"TTA", 060}, {"TTC", 061}, {"TTG", 062}, {"TTT", 063}};
+const std::map<std::string, char> codon_to_char {{"AAA", 0}, {"AAC", 1}, {"AAG", 2}, {"AAT", 3}, {"ACA", 4}, {"ACC", 5}, {"ACG", 6},{"ACT", 7},
+                                                 {"AGA", 8}, {"AGC", 9}, {"AGG", 10}, {"AGT", 11}, {"ATA", 12}, {"ATC", 13}, {"ATG", 14}, {"ATT", 15},
+                                                 {"CAA", 16}, {"CAC", 17}, {"CAG", 18}, {"CAT", 19}, {"CCA", 20}, {"CCC", 21}, {"CCG", 22}, {"CCT", 23},
+                                                 {"CGA", 24}, {"CGC", 25}, {"CGG", 26}, {"CGT", 27}, {"CTA", 28}, {"CTC", 29}, {"CTG", 30}, {"CTT", 31},
+                                                 {"GAA", 32}, {"GAC", 33}, {"GAG", 34}, {"GAT", 35}, {"GCA", 36}, {"GCC", 37}, {"GCG", 38}, {"GCT", 39},
+                                                 {"GGA", 40}, {"GGC", 41}, {"GGG", 42}, {"GGT", 43}, {"GTA", 44}, {"GTC", 45}, {"GTG", 46}, {"GTT", 47},
+                                                 {"TAA", 48}, {"TAC", 49}, {"TAG", 50}, {"TAT", 51}, {"TCA", 52}, {"TCC", 53}, {"TCG", 54}, {"TCT", 55},
+                                                 {"TGA", 56}, {"TGC", 57}, {"TGG", 58}, {"TGT", 59}, {"TTA", 60}, {"TTC", 61}, {"TTG", 62}, {"TTT", 63}};
 
-struct
+struct aligned_codon {
+    std::string species;
+    char codon;
+
+    aligned_codon() {
+        species = "None";
+        codon = 64;
+    }
+
+    aligned_codon(std::string species, char codon) :
+        species(species),
+        codon(codon) {}
+};
 
 #endif //ECM_PROCESS_MAF_H

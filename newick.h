@@ -17,6 +17,7 @@ struct newick_graph {
     float branch_length;
     std::string species;
     std::vector<newick_graph*> previous;
+    float felsenstein[4];
 
     newick_graph() {
         next = NULL;
@@ -24,6 +25,10 @@ struct newick_graph {
         branch_length = 0.0;
         species = "None";
         previous = {};
+        felsenstein[0] = 0.0;
+        felsenstein[1] = 0.0;
+        felsenstein[2] = 0.0;
+        felsenstein[3] = 0.0;
     }
 
     newick_graph(newick_graph *next, std::string parent, float branch_length, std::string species, std::vector<newick_graph*> previous) :
