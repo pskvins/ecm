@@ -8,34 +8,47 @@
 #include <algorithm>
 #include "codon_frequency.cpp"
 
-void process_reference(std::string &line, &all_CDS_info) {
-    uint32_t start;
-    uint32_t end;
-    size_t pos_start;
-    size_t pos_end;
-    char delimiter = '\t';
-
-}
-
-
-std::vector<aligned_codon> maf_to_aligned_codons(const char * path_to_maf, std::vector<CDS_info> &all_CDS_info) {
+std::vector<aligned_codon> maf_to_aligned_codons(const char * path_to_maf, short int species_num) {
     std::ifstream maf;
     maf.open(path_to_maf);
     std::string line;
     std::vector<std::string> block;
+    aligned_codon *codon_set = new aligned_codon[species_num];
+    std::vector<aligned_codon> codon_set_vector;
+    size_t pos = 0;
+    size_t pos_2 = 0;
+    std::string codon;
+    char codon_map;
     getline(maf, line);
     while (!line.empty()) {
-        if (line[0] == '#') {
-            while (line[0] == '#') {
+        if (line[0] == 'a') {
+            getline(maf, line);
+            while (line[0] != 'a') {
+                if (line [0] == 's') {
+                    block.emplace_back(line);
+                }
+            }
+            for (size_t num = 0; num < block.size(); num++) {
+                pos = block[0].find('\t');
+                pos_2 = block[0].find('.');
+                codon_set[0].species = block[0].substr(pos + 1, pos_2 - pos - 1);
+                pos = block[0].find('\t', pos_2);
+                block[0].erase(0, pos);
+            }
+            while (block[0].size() >= 3) {
+                for (size_t num = 0; num < block.size(); num++) {
+                    codon = block[num].substr(0, 3);
+                    codon_map = codon_to_char.find(codon)->second;
+                    codon_set[num].codon = codon_map;
+                    block[num].erase(0, 3);
+                }
+                codon_set_vector.emplace_back(*codon_set);
+            }
+        } else {
+            while (line[0] != 'a') {
                 getline(maf, line);
             }
         }
-        if (line[0] == 'a') {
-            getline(maf, line);
-
-            while (line[0] == 's') {
-
-            }
-        }
     }
+    return codon_set_vector;
 }

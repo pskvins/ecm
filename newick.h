@@ -14,10 +14,11 @@ class expectation_step {
 struct newick_graph {
     newick_graph *next;
     std::string parent;
-    float branch_length;
+    double branch_length;
     std::string species;
     std::vector<newick_graph*> previous;
-    float felsenstein[4];
+    double felsenstein[64];
+    bool base[64];
 
     newick_graph() {
         next = NULL;
@@ -25,10 +26,10 @@ struct newick_graph {
         branch_length = 0.0;
         species = "None";
         previous = {};
-        felsenstein[0] = 0.0;
-        felsenstein[1] = 0.0;
-        felsenstein[2] = 0.0;
-        felsenstein[3] = 0.0;
+        for (int num = 0; num < 64; num++) {
+            felsenstein[num] = 0.0;
+            base[num] = true;
+        }
     }
 
     newick_graph(newick_graph *next, std::string parent, float branch_length, std::string species, std::vector<newick_graph*> previous) :
