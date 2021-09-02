@@ -1,6 +1,7 @@
 //
 // Created by 박석환 on 2021/08/09.
 //
+#include <gsl/gsl_linalg.h>
 
 #ifndef ECM_EXPECTATION_STEP_H
 #define ECM_EXPECTATION_STEP_H
@@ -18,7 +19,10 @@ struct newick_graph {
     std::string species;
     std::vector<newick_graph*> previous;
     double felsenstein[64];
+    double upper[64];
+    double expectation[64*64];
     bool base[64];
+    gsl_matrix *expon_matrix = gsl_matrix_alloc(64, 64);
 
     newick_graph() {
         next = NULL;
@@ -28,7 +32,11 @@ struct newick_graph {
         previous = {};
         for (int num = 0; num < 64; num++) {
             felsenstein[num] = 0.0;
+            upper[num] = 0.0;
             base[num] = true;
+        }
+        for (int num = 0; num < 64 * 64; num++) {
+            expectation[num] = 0.0;
         }
     }
 

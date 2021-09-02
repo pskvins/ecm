@@ -32,7 +32,7 @@ std::vector<aligned_codon> maf_to_aligned_codons(const char * path_to_maf, short
                 pos = block[0].find('\t');
                 pos_2 = block[0].find('.');
                 codon_set[0].species = block[0].substr(pos + 1, pos_2 - pos - 1);
-                pos = block[0].find('\t', pos_2);
+                pos = block[0].find_last_of('\t');
                 block[0].erase(0, pos);
             }
             while (block[0].size() >= 3) {
