@@ -222,7 +222,7 @@ void calculate_expectation(newick_start *start) {
                     denominator += next_iteration[num]->felsenstein[base_acc] * gsl_matrix_get(next_iteration[num]->expon_matrix, base_next, base_acc);
                 }
                 for (char base_curr = 0; base_curr < 64; base_curr++) {
-                    next_iteration[num]->expectation[64 * base_next + base_curr] = next_iteration[num]->felsenstein[base_curr] *
+                    next_iteration[num]->expectation[64 * base_next + base_curr] += next_iteration[num]->felsenstein[base_curr] *
                             gsl_matrix_get(next_iteration[num]->expon_matrix, base_next, base_curr) * next_iteration[num]->next->upper[base_next] / denominator;
                 }
             }
@@ -231,5 +231,45 @@ void calculate_expectation(newick_start *start) {
             }
         }
         next_iteration.erase(next_iteration.begin(), next_iteration.begin() + size);
+    }
+}
+
+//Integrating all the expectation steps
+void conduct_expectation_step(std::vector<aligned_codon> aligned_codon_set, newick_start *start, newick_graph *end,
+                              gsl_matrix *qmatrix, gsl_matrix *eigenvector, gsl_matrix *eigen_inverse, gsl_vector *eigenvalue, double *codon_freq) {
+    std::vector<newick_graph*> next_iterator = start->next;
+    for (size_t num = 0; num < next_iterator.size(); num++) {
+        for (char base = 0; base < 64; base++) {
+            next_iterator[num]->base[base] = true;
+        }
+    }
+
+    while (!next_iterator.empty()) {
+        size_t size = next_iterator.size();
+        for (size_t num = 0; num < size; num++) {
+            for (char base_first = 0; base_first < 64; base_first++) {
+                for (char base_second = 0; base_second < 64; base_second++) {
+                    next_iterator[num]->expectation[64 * base_first + base_second] = 0.0;
+                }
+            }
+            if (next_iterator[num]->next != NULL) {
+                next_iterator.emplace_back(next_iterator[num]->next);
+            }
+        }
+        next_iterator.erase(next_iterator.begin(), next_iterator.begin() + size);
+    }
+
+    get_eigenvector_and_inverse(qmatrix, 0, eigenvector, eigen_inverse, eigenvalue);
+
+    set_matrices(start, eigenvector, eigen_inverse, eigenvalue);
+
+    for (size_t num = 0; num < aligned_codon_set.size(); num++) {
+        conduct_felsenstein(start, &aligned_codon_set[num], eigenvector, eigen_inverse, eigenvalue);
+
+        calculate_upper(end, codon_freq);
+
+        update_upper(start, codon_freq);
+
+        calculate_expectation(start);
     }
 }
