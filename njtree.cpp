@@ -2,6 +2,7 @@
 #include <vector>
 #include <algorithm>
 #include <fstream>
+#include <assert.h>
 
 
 uint32_t finding_index(std::vector<std::string> &name,std::string chrom) {
@@ -39,7 +40,7 @@ struct distance_matrix_grid {
 
 void read_maf(std::string delimiter, std::string line, std::vector<maf_info> &block) {
     size_t pos;
-    uint queue;
+    int queue;
     std::string name;
     std::string seq;
     uint32_t length;

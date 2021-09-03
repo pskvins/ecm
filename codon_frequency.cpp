@@ -15,9 +15,9 @@ struct CDS_info {
     uint32_t start;
     uint32_t end;
     std::string strand;
-    uint additional;
+    uint8_t additional;
 
-    CDS_info(std::string chrom, uint32_t start, uint32_t end, std::string strand, uint additional) :
+    CDS_info(std::string chrom, uint32_t start, uint32_t end, std::string strand, uint8_t additional) :
             chrom(chrom),
             start(start),
             end(end),
@@ -81,7 +81,7 @@ std::vector<CDS_info> get_CDS_info(const char * file_path_gtf) {
     uint32_t temp_start;
     uint32_t temp_end;
     std::string temp_strand;
-    uint temp_additional;
+    uint8_t temp_additional;
     std::string gtf_line;
     size_t pos;
     std::string delimiter = "\t";
@@ -99,7 +99,7 @@ std::vector<CDS_info> get_CDS_info(const char * file_path_gtf) {
             }
             continue;
         }
-        uint queue = 0;
+        uint8_t queue = 0;
         while (queue < 8) {
             pos = gtf_line.find(delimiter);
             if (queue == 0) {
