@@ -13,7 +13,6 @@ void calculate_derivative(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *e
     for (int num = 0; num < 64 * 63 / 2; num++) {
         dxepon_matrix[num] = gsl_matrix_alloc(64, 64);
     }
-    double grad[64 * 63 / 2] = {0.0};
     double diagonal[64] = {0};
     double normalize;
     for (int row = 0; row < 64; row++) {
@@ -83,4 +82,7 @@ void calculate_derivative(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *e
             next_iteration.erase(next_iteration.begin(), next_iteration.begin() + size);
         }
     }
+    gsl_matrix_free(eigenvector);
+    gsl_matrix_free(eigen_inverse);
+    gsl_vector_free(eigenvalue);
 }

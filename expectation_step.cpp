@@ -13,7 +13,7 @@
 
 void get_eigenvector_and_inverse(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *eigenvector, gsl_matrix *eigenvec_inverse, gsl_vector *eigenvalue) {
     //set qmatrix_temp & normalize
-    gsl_matrix *qmatrix_temp = gsl_matrix_alloc(64, 64);
+    gsl_matrix *qmatrix_temp = gsl_matrix_alloc(64, 64);//freed
     gsl_matrix_memcpy(qmatrix_temp, qmatrix);
     for (size_t row = 0; row < 64; row++) {
         for (size_t col = 0; col < 64; col++) {
@@ -61,6 +61,7 @@ void get_eigenvector_and_inverse(gsl_matrix *qmatrix, double *codon_freq, gsl_ma
             gsl_vector_set(eigenvalue, i, check.dat[0]);
         }
     }
+    gsl_vector_complex_free(eigenvalue_com);
 
     for (size_t row = 0; row < 64; row++) {
         for (size_t col = 0; col < 64; col++) {
@@ -204,8 +205,10 @@ void update_upper(newick_start *start, double *codon_freq) {
             for (char base = 0; base < 64; base++) {
                 next_iteration[num]->upper[base] = next_iteration[num]->felsenstein[base] * next_iteration[num]->upper[base] / denominator;
             }
-            if (next_iteration[num]->next != NULL) {
-                next_iteration.emplace_back(next_iteration[num]->next);
+            if (std::find(next_iteration.begin(), next_iteration.end(), next_iteration[num]->next) == next_iteration.end()) {
+                if (next_iteration[num]->next != NULL) {
+                    next_iteration.emplace_back(next_iteration[num]->next);
+                }
             }
         }
         next_iteration.erase(next_iteration.begin(), next_iteration.begin() + size);
@@ -227,8 +230,10 @@ void calculate_expectation(newick_start *start) {
                             gsl_matrix_get(next_iteration[num]->expon_matrix, base_next, base_curr) * next_iteration[num]->next->upper[base_next] / denominator;
                 }
             }
-            if (next_iteration[num]->next != NULL) {
-                next_iteration.emplace_back(next_iteration[num]->next);
+            if (std::find(next_iteration.begin(), next_iteration.end(), next_iteration[num]->next) == next_iteration.end()) {
+                if (next_iteration[num]->next != NULL) {
+                    next_iteration.emplace_back(next_iteration[num]->next);
+                }
             }
         }
         next_iteration.erase(next_iteration.begin(), next_iteration.begin() + size);
