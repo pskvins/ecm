@@ -22,7 +22,7 @@ struct newick_graph {
     double upper[64];
     double expectation[64*64];
     bool base[64];
-    gsl_matrix *expon_matrix = gsl_matrix_alloc(64, 64);
+    gsl_matrix *expon_matrix[3];
 
     newick_graph() {
         next = NULL;
@@ -37,6 +37,9 @@ struct newick_graph {
         }
         for (int num = 0; num < 64 * 64; num++) {
             expectation[num] = 0.0;
+        }
+        for (int num = 0; num < 3; num++) {
+            expon_matrix[num] = gsl_matrix_alloc(64, 64);
         }
     }
 
