@@ -280,10 +280,6 @@ void conduct_expectation_step(std::vector<aligned_codon> aligned_codon_set, newi
 
     set_matrices(start, eigenvector, eigen_inverse, eigenvalue);
 
-    gsl_matrix_free(eigenvector);
-    gsl_matrix_free(eigen_inverse);
-    gsl_vector_free(eigenvalue);
-
     for (size_t num = 0; num < aligned_codon_set.size(); num++) {
         conduct_felsenstein(start, &aligned_codon_set[num]);
 

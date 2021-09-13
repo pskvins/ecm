@@ -9,9 +9,10 @@
 #include "maximization_step.h"
 #include "expectation_step.cpp"
 
-void calculate_derivative(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *eigenvector, gsl_matrix *eigen_inverse, gsl_vector *eigenvalue, newick_start *start, double *gradient) {
+void calculate_derivative(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *eigenvector, gsl_matrix *eigen_inverse, gsl_vector *eigenvalue, newick_start *start, gsl_matrix *gradient) {
+    gsl_matrix_set_all(gradient, 0.0);
     gsl_matrix *dxepon_matrix[64 * 63 / 2];
-    for (int num = 0; num < 64 * 63 / 2; num++) {
+    for (int num = 0; num < 2016; num++) {
         dxepon_matrix[num] = gsl_matrix_alloc(64, 64);
     }
     double diagonal[64] = {0};
@@ -70,9 +71,9 @@ void calculate_derivative(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *e
                 //putting negative of gradient
                 for (size_t row = 0; row < 64; row++) {
                     for (size_t col = 0; col < 64; col++) {
-                        gradient[diff] -= next_iteration[num]->expectation[64 * row + col]
-                                * gsl_matrix_get(dxepon_matrix[diff], row, col)
-                                / gsl_matrix_get(next_iteration[num]->expon_matrix[0], row, col);
+                        gsl_matrix_set(gradient, diff, 0, gsl_matrix_get(gradient, diff, 0) - next_iteration[num]->expectation[64 * row + col]
+                                                                                                  * gsl_matrix_get(dxepon_matrix[diff], row, col)
+                                                                                                  / gsl_matrix_get(next_iteration[num]->expon_matrix[0], row, col));
                     }
                 }
                 if (std::find(next_iteration.begin(), next_iteration.end(), next_iteration[num]->next) == next_iteration.end()) {
@@ -87,12 +88,15 @@ void calculate_derivative(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *e
     gsl_matrix_free(eigenvector);
     gsl_matrix_free(eigen_inverse);
     gsl_vector_free(eigenvalue);
+    for (int num = 0; num < 2016; num++) {
+        gsl_matrix_free(dxepon_matrix[num]);
+    }
 }
 
-void normalize_qmatirx(gsl_matrix *qmatrix, double *codon_freq, gsl_vector *direction, double lambda, gsl_matrix *new_matrix) {
+void normalize_qmatirx(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *direction, double lambda, gsl_matrix *new_matrix) {
     for (size_t row = 0; row < 64; row++) {
         for (size_t col = 0; col < 64; col++) {
-            gsl_matrix_set(new_matrix, row, col, (gsl_matrix_get(qmatrix, row, col) + lambda * gsl_vector_get(direction, 64 * row + col)) * codon_freq[col]);
+            gsl_matrix_set(new_matrix, row, col, (gsl_matrix_get(qmatrix, row, col) + lambda * gsl_matrix_get(direction, 64 * row + col, 0)) * codon_freq[col]);
         }
     }
     double sum = 0.0;
@@ -145,8 +149,7 @@ void update_expon_matrix(newick_start *start, gsl_matrix *eigenvector, gsl_matri
     while (next_iterator.size() != 1) {
         size_t size = next_iterator.size();
         for (size_t num = 0; num < size; num++) {
-            gsl_matrix_memcpy(next_iterator[num]->expon_matrix[1], next_iterator[num]->expon_matrix[2]);
-            gsl_matrix_memcpy(next_iterator[num]->expon_matrix[2], calculate_expon_matrix(eigenvector, eigen_inverse, eigenvalue, eigenvector_temp, eigenvalue_temp, next_iterator[num]->branch_length));
+            gsl_matrix_memcpy(next_iterator[num]->expon_matrix[1], calculate_expon_matrix(eigenvector, eigen_inverse, eigenvalue, eigenvector_temp, eigenvalue_temp, next_iterator[num]->branch_length));
             if (std::find(next_iterator.begin(), next_iterator.end(), next_iterator[num]->next) == next_iterator.end()) {
                 if (next_iterator[num]->next != NULL) {
                     next_iterator.emplace_back(next_iterator[num]->next);
@@ -159,16 +162,14 @@ void update_expon_matrix(newick_start *start, gsl_matrix *eigenvector, gsl_matri
     gsl_vector_free(eigenvalue_temp);
 }
 
-double backtracking(newick_start *start, gsl_matrix *qmatrix, double *codon_freq, gsl_vector *direction, double *gradient) {
-    gsl_matrix *qmatrix_temp = gsl_matrix_alloc(64, 64);
-    gsl_matrix *eigenvector = gsl_matrix_alloc(64, 64);
-    gsl_matrix *eigen_inverse = gsl_matrix_alloc(64, 64);
-    gsl_vector *eigenvalue = gsl_vector_alloc(64);
+double backtracking(newick_start *start, gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *direction, gsl_matrix *gradient, double &lamb, gsl_matrix *eigenvector, gsl_matrix *eigen_inverse, gsl_vector *eigenvalue) {
+    gsl_matrix *qmatrix_temp = gsl_matrix_alloc(64, 64);//freed
+    gsl_matrix_memcpy(qmatrix_temp, qmatrix);
     //TODO: Do I have to normalize in this step??-->seems like has to be normalized (equation needs normalization)
     double funcg_ori = calculate_maximization_function(start, 0);
     double slope = 0.0;
     for (int num = 0; num < 2016; num++) {
-        slope += gradient[num] * gsl_vector_get(direction, num);
+        slope += gsl_matrix_get(gradient, num, 0) * gsl_matrix_get(direction, num, 0);
     }
     assert(slope < 0.0 && "Direction not going down");
     const double machine_precision = 2.0e-14;
@@ -180,13 +181,12 @@ double backtracking(newick_start *start, gsl_matrix *qmatrix, double *codon_freq
     for (size_t num = 0; num < 63 * 64 / 2; num++) {
         row = num_to_coordinate.find(num)->second.begin()->first;
         col = num_to_coordinate.find(num)->second.begin()->second;
-        temp = abs(gsl_vector_get(direction, num)) / std::max(abs(gsl_matrix_get(qmatrix, row, col)), 1.0);
+        temp = abs(gsl_matrix_get(direction, num, 0)) / std::max(abs(gsl_matrix_get(qmatrix, row, col)), 1.0);
         if (temp > test) {
             test = temp;
         }
     }
     double lambmin = machine_precision / test;
-    double lamb = 1.0;
     double lamb_old = 0.0;
     double lamb_tmp, cubic_a, cubic_b, cubic_comp_first, cubic_comp_secnd;
     double funcg;
@@ -204,14 +204,14 @@ double backtracking(newick_start *start, gsl_matrix *qmatrix, double *codon_freq
         update_expon_matrix(start, eigenvector, eigen_inverse, eigenvalue);
 
         //calculate g(lambda)
-        funcg = calculate_maximization_function(start, 0);
+        funcg = calculate_maximization_function(start, 1);
         if (lamb < lambmin) {
-            gsl_matrix_free(eigenvector);
-            gsl_matrix_free(eigen_inverse);
-            gsl_vector_free(eigenvalue);
-            return 0.0;
+            gsl_matrix_free(qmatrix_temp);
+            lamb = 0.0;
+            return funcg;
         } else if (funcg <= funcg_ori + alpha * lamb * slope) {
-            return lamb;
+            gsl_matrix_free(qmatrix_temp);
+            return funcg;
         } else {
             if (lamb == 1.0) {
                 lamb_tmp = -slope / (2.0 * (funcg - funcg_ori - slope));
@@ -243,6 +243,106 @@ double backtracking(newick_start *start, gsl_matrix *qmatrix, double *codon_freq
     }
 }
 
-void quasi_Newton_method(newick_start *start, gsl_matrix *qmatrix, double *codon_freq) {
+double quasi_Newton_method(newick_start *start, gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *eigenvector, gsl_matrix *eigen_inverse, gsl_vector *eigenvalue) {
+    const double machine_precision = 2.0e-14;
+    const int iterate_max = 200;
+    //initialize matrix
+    gsl_matrix *hessian = gsl_matrix_alloc(2016, 2016);//freed
+    gsl_matrix *hessian_append = gsl_matrix_alloc(2016, 2016);//freed
+    gsl_matrix_set_all(hessian, 0.0);
+    gsl_matrix_set_all(hessian_append, 0.0);
+    for (int num = 0; num < 2016; num++) {
+        gsl_matrix_set(hessian, num, num, 1.0);
+    }
+    gsl_matrix *gradient = gsl_matrix_alloc(2016, 1);//freed
+    gsl_matrix *gradient_new = gsl_matrix_alloc(2016, 1);//freed
+    gsl_matrix_set_all(gradient, 0.0);
+    gsl_matrix_set_all(gradient_new, 0.0);
+    calculate_derivative(qmatrix, codon_freq, eigenvector, eigen_inverse, eigenvalue, start, gradient);
+    gsl_matrix *dx = gsl_matrix_alloc(2016, 1);//freed
+    gsl_matrix *x = gsl_matrix_alloc(2016, 1);//freed
+    gsl_matrix *x_new = gsl_matrix_alloc(2016, 1);//freed
+    for (int num = 0; num < 2016; num++) {
+        gsl_matrix_set(dx, num, 0, -gsl_matrix_get(gradient, num, 0));
+    }
+    int row_map, col_map;
+    for (int num = 0; num < 2016; num++) {
+        row_map = num_to_coordinate.find(num)->second.begin()->first;
+        col_map = num_to_coordinate.find(num)->second.begin()->second;
+        gsl_matrix_set(x, num, 0, gsl_matrix_get(qmatrix, row_map, col_map));
+    }
 
+    gsl_matrix *qmatrix_new = gsl_matrix_alloc(64, 64);//freed
+    double lambda = 1.0;
+    double function_value;
+    //start loop
+    for (int its = 0; its < iterate_max; its++) {
+        function_value = backtracking(start, qmatrix, codon_freq, dx, gradient, lambda, eigenvector, eigen_inverse, eigenvalue);
+        for (int num = 0; num < 2016; num++) {
+            gsl_matrix_set(dx, num, 0, lambda * gsl_matrix_get(dx, num, 0));
+            row_map = num_to_coordinate.find(num)->second.begin()->first;
+            col_map = num_to_coordinate.find(num)->second.begin()->second;
+            gsl_matrix_set(qmatrix_new, row_map, col_map, gsl_matrix_get(qmatrix, row_map, col_map) + gsl_matrix_get(dx, num, 0));
+            gsl_matrix_set(qmatrix_new, col_map, row_map, gsl_matrix_get(qmatrix_new, row_map, col_map));
+            gsl_matrix_set(x_new, num, 0, gsl_matrix_get(x, num, 0) + gsl_matrix_get(dx, num, 0));
+        }
+        //set rest of qmatrix_new and x_new(already set)
+        double sum = 0.0;
+        for (size_t dia = 0; dia < 64; dia++) {
+            for (size_t nondia = 0; nondia < 64; nondia++) {
+                if (dia != nondia) {
+                    sum -= gsl_matrix_get(qmatrix_new, dia, nondia);
+                }
+            }
+            gsl_matrix_set(qmatrix_new, dia, dia, sum);
+            sum = 0.0;
+        }
+
+        double test = 0.0;
+        for (int num = 0; num < 2016; num++) {
+            double temp = abs(gsl_matrix_get(dx, num, 0)) / std::max(abs(gsl_matrix_get(x_new, num, 0)), 1.0);
+            if (temp > test) {
+                test = temp;
+            }
+        }
+        if (test < 4 * machine_precision) {
+            gsl_matrix_free(hessian);
+            gsl_matrix_free(hessian_append);
+            gsl_matrix_free(gradient);
+            gsl_matrix_free(gradient_new);
+            gsl_matrix_free(x);
+            gsl_matrix_free(x_new);
+            gsl_matrix_free(dx);
+            gsl_matrix_free(qmatrix_new);
+            return function_value;
+        }
+        calculate_derivative(qmatrix_new, codon_freq, eigenvector, eigen_inverse, eigenvalue, start, gradient_new);
+        //now gradient is the yk
+        for (int num = 0 ; num < 2016; num++) {
+            gsl_matrix_set(gradient, num, 0, gsl_matrix_get(gradient_new, num, 0) - gsl_matrix_get(gradient, num, 0));
+        }
+        //update hessian matrix
+        double denominator = 0;
+        for (int num = 0; num < 2016; num++) {
+            denominator += gsl_matrix_get(gradient, num, 0) * gsl_matrix_get(x_new, num, 0);
+        }
+        gsl_blas_dgemm(CblasNoTrans, CblasTrans, -1.0 / denominator, dx, gradient, 0.0, hessian_append);
+        for (int num = 0; num < 2016; num++) {
+            gsl_matrix_set(hessian_append, num, num, 1.0 + gsl_matrix_get(hessian_append, num, num));
+        }
+        gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, hessian_append, hessian, 0.0, hessian);
+        gsl_blas_dgemm(CblasNoTrans, CblasTrans, -1.0 / denominator, gradient, dx, 0.0, hessian_append);
+        for (int num = 0; num < 2016; num++) {
+            gsl_matrix_set(hessian_append, num, num, 1.0 + gsl_matrix_get(hessian_append, num, num));
+        }
+        gsl_blas_dgemm(CblasNoTrans, CblasTrans, 1.0, hessian, hessian_append, 0.0, hessian);
+        gsl_blas_dgemm(CblasNoTrans, CblasTrans, 1.0 / denominator, dx, dx, 0.0, hessian_append);
+        gsl_matrix_add(hessian, hessian_append);
+        //update gradient, qmatirx x and dx
+        gsl_matrix_memcpy(x, x_new);
+        gsl_matrix_memcpy(gradient, gradient_new);
+        gsl_matrix_memcpy(qmatrix, qmatrix_new);
+        gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, -1.0, hessian, gradient, 0.0, dx);
+    }
+    throw("Too many iterations");
 }

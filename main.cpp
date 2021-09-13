@@ -88,15 +88,25 @@ int main() {
         }
     }
 
+    newick_start* start_point = new newick_start;
+    newick_graph* end_point = new newick_graph;
+
+    newick_graph *nodes = process_newick("/Users/sukhwanpark/Downloads/7yeast.nh", start_point, end_point);
+
+    std::vector<aligned_codon> aligned_codon_set = maf_to_aligned_codons("/Users/sukhwanpark/Downloads/Scer_7way_only7_tab.maf", 7);
+
     gsl_matrix *eigenvector = gsl_matrix_alloc(64, 64);//freed
     gsl_matrix *eigenvec_inverse = gsl_matrix_alloc(64, 64);//freed
     gsl_vector *eigenvalue = gsl_vector_alloc(64);//freed
 
+    double function_value = 0.0;
+    double function_value_old = 1.0;
 
-    double gradient[64 * 63 / 2];
-    newick_start *start;
-
-
-
+    while (abs(function_value - function_value_old) > 4.0e-12) {
+        function_value_old = function_value;
+        conduct_expectation_step(aligned_codon_set, start_point, end_point, qmatrix, eigenvector, eigenvec_inverse,
+                                 eigenvalue, coding_freq);
+        function_value = quasi_Newton_method(start_point, qmatrix, coding_freq, eigenvector, eigenvec_inverse, eigenvalue);
+    }
     return 0;
 }

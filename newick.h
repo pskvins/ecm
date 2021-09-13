@@ -22,7 +22,7 @@ struct newick_graph {
     double upper[64];
     double expectation[64*64];
     bool base[64];
-    gsl_matrix *expon_matrix[3];
+    gsl_matrix *expon_matrix[2];
 
     newick_graph() {
         next = NULL;
@@ -38,7 +38,7 @@ struct newick_graph {
         for (int num = 0; num < 64 * 64; num++) {
             expectation[num] = 0.0;
         }
-        for (int num = 0; num < 3; num++) {
+        for (int num = 0; num < 2; num++) {
             expon_matrix[num] = gsl_matrix_alloc(64, 64);
         }
     }
@@ -50,17 +50,17 @@ struct newick_graph {
             species(species),
             next(next) {}
 
-    void insert_inbetween_end_n_target(newick_graph &end, newick_graph *nodes, size_t count, newick_graph &child) {
+    void insert_inbetween_end_n_target(newick_graph *end, newick_graph *nodes, size_t count, newick_graph &child) {
         child.next = &nodes[count];
         nodes[count].previous.emplace_back(&child);
-        nodes[count].next = &end;
-        for (size_t pos = 0; pos < end.previous.size(); pos++) {
-            if (end.previous[pos] == &child) {
-                end.previous.erase(end.previous.begin() + pos);
+        nodes[count].next = end;
+        for (size_t pos = 0; pos < end->previous.size(); pos++) {
+            if (end->previous[pos] == &child) {
+                end->previous.erase(end->previous.begin() + pos);
             }
         }
-        if (std::find(end.previous.begin(), end.previous.end(), &nodes[count]) == end.previous.end()) {
-            end.previous.emplace_back(&nodes[count]);
+        if (std::find(end->previous.begin(), end->previous.end(), &nodes[count]) == end->previous.end()) {
+            end->previous.emplace_back(&nodes[count]);
         }
     }
 };
@@ -75,10 +75,10 @@ struct newick_start {
     newick_start(std::vector<newick_graph*> next) :
             next(next) {}
 
-    void connect_start(newick_start &start, newick_graph *current, size_t pos, newick_graph &end) {
-        start.next.emplace_back(&current[pos]);
-        current[pos].next = &end;
-        end.previous.emplace_back(&current[pos]);
+    void connect_start(newick_start *start, newick_graph *current, size_t pos, newick_graph *end) {
+        start->next.emplace_back(&current[pos]);
+        current[pos].next = end;
+        end->previous.emplace_back(&current[pos]);
     }
 };
 

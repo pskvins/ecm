@@ -9,7 +9,7 @@
 #include <fstream>
 
 
-void update_nodes(newick_graph *nodes, size_t &count, std::string &lines, size_t &left_pos, size_t &right_pos, newick_start &start_point, newick_graph &end_point) {
+void update_nodes(newick_graph *nodes, size_t &count, std::string &lines, size_t &left_pos, size_t &right_pos, newick_start *start_point, newick_graph *end_point) {
     size_t temp_pos_comma;
     size_t temp_pos_colon_first;
     size_t temp_pos_colon_second;
@@ -51,17 +51,17 @@ void update_nodes(newick_graph *nodes, size_t &count, std::string &lines, size_t
         }
     }
     if (check_first == count) {
-        start_point.connect_start(start_point, nodes, count, end_point);
+        start_point->connect_start(start_point, nodes, count, end_point);
     }
     if (check_second == count) {
-        start_point.connect_start(start_point, nodes, count + 1, end_point);
+        start_point->connect_start(start_point, nodes, count + 1, end_point);
     }
     count += 2;
     lines.replace(left_pos, right_pos - left_pos + 1, std::to_string(count));
     right_pos = lines.find(')');
 }
 
-newick_graph *process_newick(const char * newick_file_path, newick_start &start_point, newick_graph &end_point) {
+newick_graph *process_newick(const char * newick_file_path, newick_start *start_point, newick_graph *end_point) {
     std::ifstream newick;
     newick.open(newick_file_path);
     std::string line;
