@@ -1,11 +1,9 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
-#include "njtree.cpp"
 #include "newick.cpp"
 #include "expectation_step.cpp"
 #include "process_maf.cpp"
-#include "maximization_step.cpp"
 #include "process_maf.h"
 #include <gsl/gsl_eigen.h>
 
@@ -77,6 +75,8 @@ int main() {
 
     double coding_freq[64] = {0.042558, 0.024513, 0.030138, 0.036293, 0.017995, 0.012479, 0.008171, 0.020108, 0.020893, 0.010055, 0.009439, 0.014649, 0.018597, 0.016947, 0.020770, 0.030135, 0.026648, 0.007776, 0.012271, 0.013887, 0.017633, 0.006954, 0.005409, 0.013514, 0.003213, 0.002707, 0.001910, 0.006327, 0.013506, 0.005776, 0.010752, 0.012711, 0.045143, 0.020107, 0.019335, 0.037538, 0.016269, 0.012098, 0.006217, 0.020106, 0.011230, 0.009807, 0.006088, 0.022349, 0.012260, 0.011228, 0.010804, 0.021456, 0.001050, 0.014490, 0.000519, 0.019166, 0.019118, 0.014150, 0.008827, 0.023470, 0.000684, 0.005011, 0.010397, 0.008147, 0.026476, 0.018304, 0.026556, 0.026866 };
 
+    std::vector<CDS_info> all_CDS_info = get_CDS_info("/Users/sukhwanpark/Downloads/sacCer3.ncbiRefSeq.gtf");
+
     gsl_matrix *qmatrix = gsl_matrix_alloc(64, 64);
 
     for (size_t row = 1; row < 64; row++) {
@@ -90,10 +90,12 @@ int main() {
 
     newick_start* start_point = new newick_start;
     newick_graph* end_point = new newick_graph;
+    int species_num;
+    int newick_order_max = 0;
 
-    newick_graph *nodes = process_newick("/Users/sukhwanpark/Downloads/7yeast.nh", start_point, end_point);
+    process_newick("/Users/sukhwanpark/Downloads/7yeast.nh", start_point, end_point, species_num, newick_order_max);
 
-    std::vector<aligned_codon> aligned_codon_set = maf_to_aligned_codons("/Users/sukhwanpark/Downloads/Scer_7way_only7_tab.maf", 7);
+    std::vector<std::vector<aligned_codon>> aligned_codon_set = make_msa_to_aligned_coding_codon("/Users/sukhwanpark/Downloads/Scer_7way_same_size.maf", all_CDS_info, species_num);
 
     gsl_matrix *eigenvector = gsl_matrix_alloc(64, 64);//freed
     gsl_matrix *eigenvec_inverse = gsl_matrix_alloc(64, 64);//freed
@@ -105,8 +107,17 @@ int main() {
     while (abs(function_value - function_value_old) > 4.0e-12) {
         function_value_old = function_value;
         conduct_expectation_step(aligned_codon_set, start_point, end_point, qmatrix, eigenvector, eigenvec_inverse,
-                                 eigenvalue, coding_freq);
-        function_value = quasi_Newton_method(start_point, qmatrix, coding_freq, eigenvector, eigenvec_inverse, eigenvalue);
+                                 eigenvalue, coding_freq, newick_order_max);
+        function_value = quasi_Newton_method(start_point, qmatrix, coding_freq, eigenvector, eigenvec_inverse, eigenvalue, newick_order_max);
+    }
+
+    for (size_t row = 0; row < 64; row++) {
+        for (size_t col = 0; col < 64; col++) {
+            if (row > col) {
+                std::cout << gsl_matrix_get(qmatrix, row, col) << ", ";
+            }
+        }
+        std::cout << std::endl;
     }
     return 0;
 }

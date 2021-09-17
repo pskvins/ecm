@@ -61,7 +61,7 @@ void update_nodes(newick_graph *nodes, size_t &count, std::string &lines, size_t
     right_pos = lines.find(')');
 }
 
-newick_graph *process_newick(const char * newick_file_path, newick_start *start_point, newick_graph *end_point) {
+void process_newick(const char * newick_file_path, newick_start *start_point, newick_graph *end_point, int &species_num, int &order_max) {
     std::ifstream newick;
     newick.open(newick_file_path);
     std::string line;
@@ -77,8 +77,8 @@ newick_graph *process_newick(const char * newick_file_path, newick_start *start_
         getline(newick, line);
     }
     // make binary tree
-    uint16_t nodes_count = std::count(lines.begin(), lines.end(), ':');
-    newick_graph *nodes = new newick_graph[nodes_count];
+    int species_tot_num = std::count(lines.begin(), lines.end(), ':');
+    newick_graph *nodes = new newick_graph[species_tot_num];
     size_t left_pos;
     size_t right_pos;
     right_pos = lines.find(')');
@@ -92,7 +92,19 @@ newick_graph *process_newick(const char * newick_file_path, newick_start *start_
         }
         update_nodes(nodes, count, lines, left_pos, right_pos, start_point, end_point);
     }
-
-
-    return nodes;
+    species_num = start_point->next.size();
+    //give the order (or height) of each node
+    std::vector<newick_graph*> iterate_previous = end_point->previous;
+    while (!iterate_previous.empty()) {
+        size_t size = iterate_previous.size();
+        for (size_t num = 0; num < size; num++) {
+            iterate_previous[num]->order = order_max;
+            if (!iterate_previous[num]->previous.empty()) {
+                iterate_previous.insert(iterate_previous.end(), iterate_previous[num]->previous.begin(), iterate_previous[num]->previous.end());
+            }
+        }
+        iterate_previous.erase(iterate_previous.begin(), iterate_previous.begin() + size);
+        order_max++;
+    }
+    order_max--;
 }

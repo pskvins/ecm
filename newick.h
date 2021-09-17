@@ -23,6 +23,7 @@ struct newick_graph {
     double expectation[64*64];
     bool base[64];
     gsl_matrix *expon_matrix[2];
+    int order;
 
     newick_graph() {
         next = NULL;
@@ -30,6 +31,7 @@ struct newick_graph {
         branch_length = 0.0;
         species = "None";
         previous = {};
+        order = 0;
         for (int num = 0; num < 64; num++) {
             felsenstein[num] = 0.0;
             upper[num] = 0.0;

@@ -6,7 +6,6 @@
 #include <gsl/gsl_linalg.h>
 #include <omp.h>
 #include "newick.h"
-#include "maximization_step.h"
 #include "expectation_step.cpp"
 
 void calculate_derivative(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *eigenvector, gsl_matrix *eigen_inverse, gsl_vector *eigenvalue, newick_start *start, gsl_matrix *gradient) {
@@ -162,6 +161,7 @@ void update_expon_matrix(newick_start *start, gsl_matrix *eigenvector, gsl_matri
     gsl_vector_free(eigenvalue_temp);
 }
 
+//Todo: do I have to limit the length of each step? If I do, then how much?
 double backtracking(newick_start *start, gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *direction, gsl_matrix *gradient, double &lamb, gsl_matrix *eigenvector, gsl_matrix *eigen_inverse, gsl_vector *eigenvalue) {
     gsl_matrix *qmatrix_temp = gsl_matrix_alloc(64, 64);//freed
     gsl_matrix_memcpy(qmatrix_temp, qmatrix);
@@ -314,6 +314,29 @@ double quasi_Newton_method(newick_start *start, gsl_matrix *qmatrix, double *cod
             gsl_matrix_free(x_new);
             gsl_matrix_free(dx);
             gsl_matrix_free(qmatrix_new);
+            //change all the negative entries into non-negative entries (Israel, Rosenthal & Wei (2001))
+            double g_i = 0.0;
+            double b_i = 0.0;
+            for (size_t row = 0; row < 64; row++) {
+                for (size_t col = 0; col < 64; col++) {
+                    if (row == col) {
+                        g_i += abs(gsl_matrix_get(qmatrix, row, col));
+                    } else if (gsl_matrix_get(qmatrix, row, col) >= 0) {
+                        g_i += gsl_matrix_get(qmatrix, row, col);
+                    } else {
+                        b_i -= gsl_matrix_get(qmatrix, row, col);
+                    }
+                }
+                for (size_t col = 0; col < 64; col++) {
+                    if (row != col && gsl_matrix_get(qmatrix, row, col) < 0) {
+                        gsl_matrix_set(qmatrix, row, col, 0.0);
+                    } else if (g_i > 0) {
+                        gsl_matrix_set(qmatrix, row, col, gsl_matrix_get(qmatrix, row, col) - b_i * abs(gsl_matrix_get(qmatrix, row, col)) / g_i);
+                    }
+                }
+                g_i = 0.0;
+                b_i = 0.0;
+            }
             return function_value;
         }
         calculate_derivative(qmatrix_new, codon_freq, eigenvector, eigen_inverse, eigenvalue, start, gradient_new);

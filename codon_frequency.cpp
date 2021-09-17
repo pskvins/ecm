@@ -46,6 +46,14 @@ std::string complement_base(char base) {
     }
 }
 
+void return_complement_codon(std::string &codon) {
+    std::string complement_codon = "";
+    for (int num = 2; num >=0; num--) {
+        complement_codon += complement_base(codon[num]);
+    }
+    codon = complement_codon;
+}
+
 void get_chr_and_seq(const char * file_path_fasta, std::vector<std::string>&name, std::vector<std::string>&sequence) {
     // read fasta file and divide into vector of name and sequence
     std::ifstream fasta;
@@ -70,6 +78,14 @@ void get_chr_and_seq(const char * file_path_fasta, std::vector<std::string>&name
         }
     }
     fasta.close();
+}
+
+bool sort_CDS_info_vector(const CDS_info &first, const CDS_info &second) {
+    if (first.chrom != second.chrom) {
+        return (first.chrom < second.chrom);
+    } else {
+        return (first.start < second.start);
+    }
 }
 
 std::vector<CDS_info> get_CDS_info(const char * file_path_gtf) {
@@ -113,7 +129,7 @@ std::vector<CDS_info> get_CDS_info(const char * file_path_gtf) {
             } else if (queue == 3) {
                 temp_start = static_cast<uint32_t>(std::stoul(gtf_line.substr(0, pos))) - 1;
             } else if (queue == 4) {
-                temp_end = static_cast<uint32_t>(std::stoul(gtf_line.substr(0, pos)));
+                temp_end = static_cast<uint32_t>(std::stoul(gtf_line.substr(0, pos))) - 1;
             } else if (queue == 6) {
                 temp_strand = gtf_line.substr(0, pos);
             } else if (queue == 7) {
@@ -130,6 +146,7 @@ std::vector<CDS_info> get_CDS_info(const char * file_path_gtf) {
         getline(gtf, gtf_line);
     }
     gtf.close();
+    std::sort(all_CDS_info.begin(), all_CDS_info.end(), sort_CDS_info_vector);
     return all_CDS_info;
 }
 
@@ -163,6 +180,14 @@ void get_complement_codon(std::vector<std::string> &codon_set, std::string &codo
     }
 }
 
+uint32_t finding_index(std::vector<std::string> &name, std::string chrom) {
+    for (int num = 0; num < name.size(); num++) {
+        if (name[num] == chrom) {
+            return num;
+        }
+    }
+    throw ("index not found");
+}
 
 std::vector<double> coding_codon_freq(std::vector<std::string> &name, std::vector<std::string> &sequence, std::vector<CDS_info> &all_CDS_info) {
     // extract codons and calculate codon frequencies
