@@ -20,6 +20,7 @@ struct newick_graph {
     std::vector<newick_graph*> previous;
     double felsenstein[64];
     double upper[64];
+    double updated_upper[64];
     double expectation[64*64];
     bool base[64];
     gsl_matrix *expon_matrix[2];
@@ -35,6 +36,7 @@ struct newick_graph {
         for (int num = 0; num < 64; num++) {
             felsenstein[num] = 0.0;
             upper[num] = 0.0;
+            updated_upper[num] = 0.0;
             base[num] = true;
         }
         for (int num = 0; num < 64 * 64; num++) {

@@ -293,7 +293,7 @@ void update_upper(newick_start *start, double *codon_freq, int newick_order_max)
         for (size_t num = 0; num < size; num++) {
             if (next_iteration[num]->order == newick_order) {
                 for (char base = 0; base < 64; base++) {
-                    next_iteration[num]->upper[base] = next_iteration[num]->felsenstein[base] * next_iteration[num]->upper[base] / denominator;
+                    next_iteration[num]->updated_upper[base] = next_iteration[num]->felsenstein[base] * next_iteration[num]->upper[base] / denominator;
                 }
                 if (std::find(next_iteration.begin(), next_iteration.end(), next_iteration[num]->next) == next_iteration.end()) {
                     if (next_iteration[num]->next != NULL) {
@@ -391,11 +391,18 @@ void conduct_expectation_step(std::vector<std::vector<aligned_codon>> aligned_co
 
     set_matrices(start, eigenvector, eigen_inverse, eigenvalue, newick_order_max);
 
-    for (size_t num = 0; num < aligned_codon_set.size(); num++) {
+    bool do_upper = true;
+
+    //Todo : change into aligned_codon_set.size() later
+    for (size_t num = 0; num < 100; num++) {
         std::cout << num << std::endl;
         conduct_felsenstein(start, aligned_codon_set[num], newick_order_max);
 
-        calculate_upper(end, codon_freq);
+        if (do_upper == true) {
+            calculate_upper(end, codon_freq);
+
+            do_upper = false;
+        }
 
         update_upper(start, codon_freq, newick_order_max);
 
@@ -408,7 +415,7 @@ void calculate_derivative(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *e
     gsl_matrix_set_all(gradient, 0.0);
     gsl_matrix *dxepon_matrix[64 * 63 / 2];
     for (int num = 0; num < 2016; num++) {
-        dxepon_matrix[num] = gsl_matrix_alloc(64, 64);
+        dxepon_matrix[num] = gsl_matrix_alloc(64, 64);//freed
     }
     double diagonal[64] = {0};
     double normalize;
@@ -420,13 +427,16 @@ void calculate_derivative(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *e
         }
         normalize -= diagonal[row] * codon_freq[row];
     }
+    thread_local int newick_order = newick_order_max;
+    thread_local std::vector<newick_graph*> next_iteration = start->next;
+    thread_local gsl_matrix *F = gsl_matrix_alloc(64, 64);//freed
+    thread_local size_t row_tar = 0;
+    thread_local size_t col_tar = 0;
 #pragma omp parallel for schedule(dynamic)
     for (size_t diff = 0; diff < 64 * 63 / 2; diff++) {
-        thread_local int newick_order = newick_order_max;
-        thread_local std::vector<newick_graph*> next_iteration = start->next;
-        thread_local gsl_matrix *F = gsl_matrix_alloc(64, 64);//freed
-        thread_local size_t row_tar = num_to_coordinate[diff][0];
-        thread_local size_t col_tar = num_to_coordinate[diff][1];
+        newick_order = newick_order_max;
+        row_tar = num_to_coordinate[diff][0];
+        col_tar = num_to_coordinate[diff][1];
         while (newick_order >= 0) {
             size_t size = next_iteration.size();
             for (size_t num = 0; num < size; num++) {
@@ -469,7 +479,6 @@ void calculate_derivative(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *e
                         }
                     }
                     gsl_matrix_mul_elements(dxepon_matrix[diff], F);
-                    gsl_matrix_free(F);
                     gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, eigenvector, dxepon_matrix[diff], 0.0, dxepon_matrix[diff]);
                     gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, dxepon_matrix[diff], eigen_inverse, 0.0, dxepon_matrix[num]);
                     //putting negative of gradient
@@ -492,6 +501,7 @@ void calculate_derivative(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *e
             newick_order--;
         }
     }
+    gsl_matrix_free(F);
     gsl_matrix_free(eigenvector);
     gsl_matrix_free(eigen_inverse);
     gsl_vector_free(eigenvalue);
