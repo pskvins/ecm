@@ -6,55 +6,11 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
-#include <map>
 #include "codon_frequency.cpp"
-
-std::vector<aligned_codon> maf_to_aligned_codons(const char * path_to_maf, short int species_num) {
-    std::ifstream maf;
-    maf.open(path_to_maf);
-    std::string line;
-    std::vector<std::string> block;
-    aligned_codon *codon_set = new aligned_codon[species_num];
-    std::vector<aligned_codon> codon_set_vector;
-    size_t pos = 0;
-    size_t pos_2 = 0;
-    std::string codon;
-    char codon_map;
-    getline(maf, line);
-    while (!line.empty()) {
-        if (line[0] == 'a') {
-            getline(maf, line);
-            while (line[0] != 'a') {
-                if (line [0] == 's') {
-                    block.emplace_back(line);
-                }
-            }
-            for (size_t num = 0; num < block.size(); num++) {
-                pos = block[0].find('\t');
-                pos_2 = block[0].find('.');
-                codon_set[0].species = block[0].substr(pos + 1, pos_2 - pos - 1);
-                pos = block[0].find_last_of('\t');
-                block[0].erase(0, pos);
-            }
-            while (block[0].size() >= 3) {
-                for (size_t num = 0; num < block.size(); num++) {
-                    codon = block[num].substr(0, 3);
-                    codon_map = codon_to_char.find(codon)->second;
-                    codon_set[num].codon = codon_map;
-                    block[num].erase(0, 3);
-                }
-                codon_set_vector.emplace_back(*codon_set);
-            }
-        } else {
-            while (line[0] != 'a') {
-                getline(maf, line);
-            }
-        }
-    }
-    return codon_set_vector;
-}
+#define nuc2int(x) (x & 14u)>>1u
 
 std::vector<std::vector<aligned_codon>> make_msa_to_aligned_coding_codon(const char *file_path_maf, std::vector<CDS_info> coding_regions, int species_num) {
+
     std::vector<bool> positive;
     positive.reserve(25000000);
     std::vector<bool> negative;
@@ -140,68 +96,90 @@ std::vector<std::vector<aligned_codon>> make_msa_to_aligned_coding_codon(const c
                 it++;
             }
             for (size_t num = 0; num < len - 2; num++) {
-                intact_codon = true;
                 if (positive[start + num] == false) {
                     continue;
                 } else if (positive[start + num] == true) {
                     if (positive[start + num + 1] == true && positive[start + num + 2] == true) {
+                        intact_codon = true;
                         codon = block[0].substr(num, 3);
                         std::transform(codon.begin(), codon.end(), codon.begin(), ::toupper);
-                        if (codon_to_char.find(codon) == codon_to_char.end()) {
-                            num += 2;
-                            continue;
-                        } else {
-                            codon_set[0].codon = codon_to_char.find(codon)->second;
-                            for (size_t block_it = 1; block_it < species_num; block_it++) {
-                                codon = block[block_it].substr(num, 3);
-                                std::transform(codon.begin(), codon.end(), codon.begin(), ::toupper);
-                                if (codon_to_char.find(codon) == codon_to_char.end()) {
-                                    intact_codon = false;
-                                    break;
-                                } else {
-                                    codon_set[block_it].codon = codon_to_char.find(codon)->second;
-                                }
+                        int coordinate[3] = {0, 0, 0};
+                        for (short int base = 0; base < 3; base++) {
+                            if (codon[base] != 'T' && codon[base] != 'A' && codon[base] != 'C' && codon[base] != 'G'){
+                                num += 2;
+                                intact_codon = false;
+                                break;
+                            } else {
+                                coordinate[base] = nuc2int(codon[base]);
                             }
                         }
                         if (intact_codon == true) {
-                            coding_codon_set.emplace_back(codon_set);
+                            codon_set[0].codon = codonTable[coordinate[0]][coordinate[1]][coordinate[2]];
+                            for (size_t block_it = 1; block_it < species_num && intact_codon == true; block_it++) {
+                                codon = block[block_it].substr(num, 3);
+                                std::transform(codon.begin(), codon.end(), codon.begin(), ::toupper);
+                                for (short int base = 0; base < 3; base++) {
+                                    if (codon[base] != 'T' && codon[base] != 'A' && codon[base] != 'C' && codon[base] != 'G') {
+                                        num += 2;
+                                        intact_codon = false;
+                                        break;
+                                    } else {
+                                        coordinate[base] = nuc2int(codon[base]);
+                                    }
+                                }
+                                codon_set[block_it].codon = codonTable[coordinate[0]][coordinate[1]][coordinate[2]];
+                            }
+                            if (intact_codon == true) {
+                                coding_codon_set.emplace_back(codon_set);
+                                num += 2;
+                            }
                         }
-                        num += 2;
                     }
                 } else {
                     throw ("not being bool in vector of bool");
                 }
             }
             for (size_t num = 0; num < len - 2; num++) {
-                intact_codon = true;
                 if (negative[start + num] == false) {
                     continue;
                 } else if (negative[start + num] == true) {
                     if (negative[start + num + 1] == true && negative[start + num + 2] == true) {
+                        intact_codon = true;
                         codon = block[0].substr(num, 3);
                         std::transform(codon.begin(), codon.end(), codon.begin(), ::toupper);
                         return_complement_codon(codon);
-                        if (codon_to_char.find(codon) == codon_to_char.end()) {
-                            num += 2;
-                            continue;
-                        } else {
-                            codon_set[0].codon = codon_to_char.find(codon)->second;
-                            for (size_t block_it = 1; block_it < species_num; block_it++) {
-                                codon = block[block_it].substr(num, 3);
-                                std::transform(codon.begin(), codon.end(), codon.begin(), ::toupper);
-                                return_complement_codon(codon);
-                                if (codon_to_char.find(codon) == codon_to_char.end()) {
-                                    intact_codon = false;
-                                    break;
-                                } else {
-                                    codon_set[block_it].codon = codon_to_char.find(codon)->second;
-                                }
+                        int coordinate[3] = {0, 0, 0};
+                        for (short int base = 0; base < 3; base++) {
+                            if (codon[base] != 'T' && codon[base] != 'A' && codon[base] != 'C' || codon[base] != 'G'){
+                                num += 2;
+                                intact_codon = false;
+                                break;
+                            } else {
+                                coordinate[base] = nuc2int(codon[base]);
                             }
                         }
                         if (intact_codon == true) {
-                            coding_codon_set.emplace_back(codon_set);
+                            codon_set[0].codon = codonTable[coordinate[0]][coordinate[1]][coordinate[2]];
+                            for (size_t block_it = 1; block_it < species_num && intact_codon == true; block_it++) {
+                                codon = block[block_it].substr(num, 3);
+                                std::transform(codon.begin(), codon.end(), codon.begin(), ::toupper);
+                                return_complement_codon(codon);
+                                for (short int base = 0; base < 3; base++) {
+                                    if (codon[base] != 'T' && codon[base] != 'A' && codon[base] != 'C' && codon[base] != 'G') {
+                                        num += 2;
+                                        intact_codon = false;
+                                        break;
+                                    } else {
+                                        coordinate[base] = nuc2int(codon[base]);
+                                    }
+                                }
+                                codon_set[block_it].codon = codonTable[coordinate[0]][coordinate[1]][coordinate[2]];
+                            }
+                            if (intact_codon == true) {
+                                coding_codon_set.emplace_back(codon_set);
+                                num += 2;
+                            }
                         }
-                        num += 2;
                     }
                 }
             }

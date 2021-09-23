@@ -97,6 +97,28 @@ int main() {
 
     std::vector<std::vector<aligned_codon>> aligned_codon_set = make_msa_to_aligned_coding_codon("/Users/sukhwanpark/Downloads/Scer_7way_same_size.maf", all_CDS_info, species_num);
 
+    //test newick
+    int order = newick_order_max;
+    std::vector<newick_graph*> iterator = start_point->next;
+    size_t size = iterator.size();
+    while (order >= 0) {
+        size = iterator.size();
+        for (int num = 0; num < size; num++) {
+            if (iterator[num]->order == order) {
+                std::cout << iterator[num]->branch_length << std::endl;
+                if (std::find(iterator.begin(), iterator.end(), iterator[num]->next) == iterator.end()) {
+                    if (iterator[num]->next != NULL) {
+                        iterator.emplace_back(iterator[num]->next);
+                    }
+                }
+                iterator.erase(iterator.begin() + num);
+                num--;
+                size--;
+            }
+        }
+        order--;
+    }
+
     gsl_matrix *eigenvector = gsl_matrix_alloc(64, 64);//freed
     gsl_matrix *eigenvec_inverse = gsl_matrix_alloc(64, 64);//freed
     gsl_vector *eigenvalue = gsl_vector_alloc(64);//freed
@@ -110,6 +132,10 @@ int main() {
                                  eigenvalue, coding_freq, newick_order_max);
         function_value = quasi_Newton_method(start_point, qmatrix, coding_freq, eigenvector, eigenvec_inverse, eigenvalue, newick_order_max);
     }
+
+    gsl_matrix_free(eigenvector);
+    gsl_matrix_free(eigenvec_inverse);
+    gsl_vector_free(eigenvalue);
 
     for (size_t row = 0; row < 64; row++) {
         for (size_t col = 0; col < 64; col++) {

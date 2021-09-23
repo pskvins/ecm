@@ -108,7 +108,7 @@ void normalizing_qmatrix(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *qm
     }
 }
 
-void get_eigenvector_and_inverse(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *qmatrix_temp, gsl_matrix *eigenvector, gsl_matrix *eigenvec_inverse, gsl_vector *eigenvalue) {
+void get_eigenvector_and_inverse(gsl_matrix *qmatrix_temp, gsl_matrix *eigenvector, gsl_matrix *eigenvec_inverse, gsl_vector *eigenvalue) {
     //get eigenvalues and left & right eigenvectors
     gsl_vector_complex *eigenvalue_com = gsl_vector_complex_alloc(64);//freed
     gsl_eigen_nonsymmv_workspace *eigen_space = gsl_eigen_nonsymmv_alloc(64);//freed
@@ -294,6 +294,7 @@ void update_upper(newick_start *start, double *codon_freq, int newick_order_max)
             if (next_iteration[num]->order == newick_order) {
                 for (char base = 0; base < 64; base++) {
                     next_iteration[num]->updated_upper[base] = next_iteration[num]->felsenstein[base] * next_iteration[num]->upper[base] / denominator;
+                    next_iteration[num]->updated_upper[base] = next_iteration[num]->felsenstein[base] * next_iteration[num]->upper[base] / denominator;
                 }
                 if (std::find(next_iteration.begin(), next_iteration.end(), next_iteration[num]->next) == next_iteration.end()) {
                     if (next_iteration[num]->next != NULL) {
@@ -322,7 +323,7 @@ void calculate_expectation(newick_start *start, int newick_order_max) {
                         denominator += next_iteration[num]->felsenstein[base_acc] *
                                        gsl_matrix_get(next_iteration[num]->expon_matrix[0], base_next, base_acc);
                     }
-                    //Todo: if denominator = 0, for sure numerator is 0, so make the expectation 0 (no need to calculate) (check if this is the right solution later)
+                    //Todo: if denominator = 0, for sure numerator is 0, so make the expectation 0 (no need to calculate) --> is this the right solution?
                     if (denominator == 0) {
                         for (char base_curr = 0; base_curr < 64; base_curr++) {
                             next_iteration[num]->expectation[64 * base_next + base_curr] = 0.0;
@@ -387,7 +388,7 @@ void conduct_expectation_step(std::vector<std::vector<aligned_codon>> aligned_co
 
     normalizing_qmatrix(qmatrix, codon_freq, qmatrix_temp);
 
-    get_eigenvector_and_inverse(qmatrix, codon_freq, qmatrix_temp, eigenvector, eigen_inverse, eigenvalue);
+    get_eigenvector_and_inverse(qmatrix_temp, eigenvector, eigen_inverse, eigenvalue);
 
     set_matrices(start, eigenvector, eigen_inverse, eigenvalue, newick_order_max);
 
@@ -410,7 +411,7 @@ void conduct_expectation_step(std::vector<std::vector<aligned_codon>> aligned_co
     }
 }
 
-//copying maximization_step.cpp
+//copying maximization_step
 void calculate_derivative(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *eigenvector, gsl_matrix *eigen_inverse, gsl_vector *eigenvalue, newick_start *start, gsl_matrix *gradient, int newick_order_max) {
     gsl_matrix_set_all(gradient, 0.0);
     gsl_matrix *dxepon_matrix[64 * 63 / 2];
@@ -432,7 +433,7 @@ void calculate_derivative(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *e
     thread_local gsl_matrix *F = gsl_matrix_alloc(64, 64);//freed
     thread_local size_t row_tar = 0;
     thread_local size_t col_tar = 0;
-#pragma omp parallel for schedule(dynamic)
+//#pragma omp parallel for schedule(dynamic)
     for (size_t diff = 0; diff < 64 * 63 / 2; diff++) {
         newick_order = newick_order_max;
         row_tar = num_to_coordinate[diff][0];
@@ -486,6 +487,7 @@ void calculate_derivative(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *e
                         for (size_t col = 0; col < 64; col++) {
                             gsl_matrix_set(gradient, diff, 0, gsl_matrix_get(gradient, diff, 0) - next_iteration[num]->expectation[64 * row + col]
                                                               * gsl_matrix_get(dxepon_matrix[diff], row, col) / gsl_matrix_get(next_iteration[num]->expon_matrix[0], row, col));
+                            assert(gsl_matrix_get(next_iteration[num]->expon_matrix[0], row, col) != 0);
                         }
                     }
                     if (std::find(next_iteration.begin(), next_iteration.end(), next_iteration[num]->next) == next_iteration.end()) {
@@ -502,18 +504,18 @@ void calculate_derivative(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *e
         }
     }
     gsl_matrix_free(F);
-    gsl_matrix_free(eigenvector);
-    gsl_matrix_free(eigen_inverse);
-    gsl_vector_free(eigenvalue);
     for (int num = 0; num < 2016; num++) {
         gsl_matrix_free(dxepon_matrix[num]);
     }
 }
 
-void normalize_qmatirx(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *direction, double lambda, gsl_matrix *new_matrix) {
+void update_and_normalize_qmatirx(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *direction, double lambda, gsl_matrix *new_matrix) {
     for (size_t row = 0; row < 64; row++) {
         for (size_t col = 0; col < 64; col++) {
-            gsl_matrix_set(new_matrix, row, col, (gsl_matrix_get(qmatrix, row, col) + lambda * gsl_matrix_get(direction, 64 * row + col, 0)) * codon_freq[col]);
+            if (row > col) {
+                gsl_matrix_set(new_matrix, row, col, (gsl_matrix_get(qmatrix, row, col) + lambda * gsl_matrix_get(direction,(row - 1) * (row) / 2 + col, 0)) * codon_freq[col]);
+                gsl_matrix_set(new_matrix, col, row, (gsl_matrix_get(qmatrix, col, row) + lambda * gsl_matrix_get(direction,(row - 1) * (row) / 2 + col, 0)) * codon_freq[row]);
+            }
         }
     }
     double sum = 0.0;
@@ -626,11 +628,12 @@ double backtracking(newick_start *start, gsl_matrix *qmatrix, double *codon_freq
     double inside_sqrt;
     while (true) {
         //normalize after adding direction
-        normalize_qmatirx(qmatrix, codon_freq, direction, lamb, qmatrix_temp);
+        update_and_normalize_qmatirx(qmatrix, codon_freq, direction, lamb, qmatrix_temp);
 
         //get eigenvalues and eigenvectors
         gsl_matrix *qmatrix_cal = gsl_matrix_alloc(64, 64);//freed
-        get_eigenvector_and_inverse(qmatrix_temp, codon_freq, qmatrix_cal, eigenvector, eigen_inverse, eigenvalue);
+        gsl_matrix_memcpy(qmatrix_cal, qmatrix);
+        get_eigenvector_and_inverse(qmatrix_cal, eigenvector, eigen_inverse, eigenvalue);
 
         //update matrix in tree
         update_expon_matrix(start, eigenvector, eigen_inverse, eigenvalue, newick_order_max);

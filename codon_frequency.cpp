@@ -43,6 +43,8 @@ std::string complement_base(char base) {
     }
     else if (base == 'N') {
         return "N";
+    } else {
+        throw("weird base found");
     }
 }
 
