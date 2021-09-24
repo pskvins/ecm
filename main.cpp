@@ -82,7 +82,7 @@ int main() {
     for (size_t row = 1; row < 64; row++) {
         for (size_t col = 0; col < 64; col++) {
             if (row > col) {
-                gsl_matrix_set(qmatrix, row, col, exchange[(row - 1) * (row) / 2 + col]);
+                gsl_matrix_set(qmatrix, row, col, exchange[(row - 1) * (row) / 2 + col] + 1);
                 gsl_matrix_set(qmatrix, col, row, gsl_matrix_get(qmatrix, row, col));
             }
         }
@@ -105,7 +105,7 @@ int main() {
         size = iterator.size();
         for (int num = 0; num < size; num++) {
             if (iterator[num]->order == order) {
-                std::cout << iterator[num]->branch_length << std::endl;
+                // Todo: Do something
                 if (std::find(iterator.begin(), iterator.end(), iterator[num]->next) == iterator.end()) {
                     if (iterator[num]->next != NULL) {
                         iterator.emplace_back(iterator[num]->next);

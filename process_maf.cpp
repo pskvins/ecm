@@ -11,9 +11,9 @@
 
 std::vector<std::vector<aligned_codon>> make_msa_to_aligned_coding_codon(const char *file_path_maf, std::vector<CDS_info> coding_regions, int species_num) {
 
-    std::vector<bool> positive;
+    std::vector<char> positive;
     positive.reserve(25000000);
-    std::vector<bool> negative;
+    std::vector<char> negative;
     negative.reserve(25000000);
     std::vector<std::vector<aligned_codon>> coding_codon_set;
     std::vector<CDS_info> coding_regions_chrom;
@@ -60,26 +60,24 @@ std::vector<std::vector<aligned_codon>> make_msa_to_aligned_coding_codon(const c
             getline(maf, line);
             if (chrom != chrom_old) {
                 coding_regions_chrom.clear();
-                std::fill(positive.begin(), positive.end(), false);
-                std::fill(negative.begin(), negative.end(), false);
+                std::fill(positive.begin(), positive.end(), 0);
+                std::fill(negative.begin(), negative.end(), 0);
                 for (size_t num = 0; num < coding_regions.size(); num++) {
                     if (coding_regions[num].chrom == chrom) {
                         coding_regions_chrom.emplace_back(coding_regions[num]);
                     }
                 }
                 for (size_t num = 0; num < coding_regions_chrom.size(); num++) {
-                    if (coding_regions_chrom[num].chrom == chrom) {
-                        if (coding_regions_chrom[num].strand == "+") {
-                            for (int start = coding_regions_chrom[num].start + coding_regions_chrom[num].additional; start < coding_regions_chrom[num].end + 1; start++) {
-                                positive[start] = true;
-                            }
-                        } else if (coding_regions_chrom[num].strand == "-") {
-                            for (int start = coding_regions_chrom[num].start + coding_regions_chrom[num].additional; start < coding_regions_chrom[num].end + 1; start++) {
-                                negative[start] = true;
-                            }
-                        } else {
-                            throw ("strand not being positive or negative");
+                    if (coding_regions_chrom[num].strand == "+") {
+                        for (int start = coding_regions_chrom[num].start + coding_regions_chrom[num].additional; start < coding_regions_chrom[num].end + 1; start++) {
+                            positive[start] = 1;
                         }
+                    } else if (coding_regions_chrom[num].strand == "-") {
+                        for (int start = coding_regions_chrom[num].start + coding_regions_chrom[num].additional; start < coding_regions_chrom[num].end + 1; start++) {
+                            negative[start] = 1;
+                        }
+                    } else {
+                        throw ("strand not being positive or negative");
                     }
                 }
                 chrom_old = chrom;
@@ -96,10 +94,10 @@ std::vector<std::vector<aligned_codon>> make_msa_to_aligned_coding_codon(const c
                 it++;
             }
             for (size_t num = 0; num < len - 2; num++) {
-                if (positive[start + num] == false) {
+                if (positive[start + num] == 0) {
                     continue;
-                } else if (positive[start + num] == true) {
-                    if (positive[start + num + 1] == true && positive[start + num + 2] == true) {
+                } else if (positive[start + num] == 1) {
+                    if (positive[start + num + 1] == 1 && positive[start + num + 2] == 1) {
                         intact_codon = true;
                         codon = block[0].substr(num, 3);
                         std::transform(codon.begin(), codon.end(), codon.begin(), ::toupper);
@@ -140,17 +138,17 @@ std::vector<std::vector<aligned_codon>> make_msa_to_aligned_coding_codon(const c
                 }
             }
             for (size_t num = 0; num < len - 2; num++) {
-                if (negative[start + num] == false) {
+                if (negative[start + num] == 0) {
                     continue;
-                } else if (negative[start + num] == true) {
-                    if (negative[start + num + 1] == true && negative[start + num + 2] == true) {
+                } else if (negative[start + num] == 1) {
+                    if (negative[start + num + 1] == 1 && negative[start + num + 2] == 1) {
                         intact_codon = true;
                         codon = block[0].substr(num, 3);
                         std::transform(codon.begin(), codon.end(), codon.begin(), ::toupper);
                         return_complement_codon(codon);
                         int coordinate[3] = {0, 0, 0};
                         for (short int base = 0; base < 3; base++) {
-                            if (codon[base] != 'T' && codon[base] != 'A' && codon[base] != 'C' || codon[base] != 'G'){
+                            if (codon[base] != 'T' && codon[base] != 'A' && codon[base] != 'C' && codon[base] != 'G'){
                                 num += 2;
                                 intact_codon = false;
                                 break;

@@ -11,6 +11,9 @@
 #include "process_maf.h"
 #include <assert.h>
 #include <omp.h>
+#include <limits>
+#include <random>
+#include <chrono>
 
 //map for maximization step
 double num_to_coordinate[2016][2] = {{1, 0},
@@ -152,12 +155,14 @@ gsl_matrix* calculate_expon_matrix(gsl_matrix *eigenvector, gsl_matrix *eigen_in
     for (size_t num = 0; num < 64; num++) {
         gsl_vector_set(eigenvalue_temp, num, pow(M_E, gsl_vector_get(eigenvalue, num) * branch_length));
     }
+    gsl_matrix *eigen_temp_scnd = gsl_matrix_alloc(64, 64);
     for (size_t row = 0; row < 64; row++) {
         for (size_t col = 0; col < 64; col++) {
-            gsl_matrix_set(eigenvector_temp, row, col, gsl_matrix_get(eigenvector, row, col) * gsl_vector_get(eigenvalue_temp, col));
+            gsl_matrix_set(eigen_temp_scnd, row, col, gsl_matrix_get(eigenvector, row, col) * gsl_vector_get(eigenvalue_temp, col));
         }
     }
-    gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, eigenvector_temp, eigen_inverse, 0.0, eigenvector_temp);
+    gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, eigen_temp_scnd, eigen_inverse, 0.0, eigenvector_temp);
+    gsl_matrix_free(eigen_temp_scnd);
     return eigenvector_temp;
 }
 
@@ -394,9 +399,12 @@ void conduct_expectation_step(std::vector<std::vector<aligned_codon>> aligned_co
 
     bool do_upper = true;
 
-    //Todo : change into aligned_codon_set.size() later
-    for (size_t num = 0; num < 100; num++) {
+    unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+    std::shuffle(aligned_codon_set.begin(), aligned_codon_set.end(), std::default_random_engine(seed));
+    //Todo : change it to aligned_codon_set.size() later
+    for (size_t num = 0; num < 40000; num++) {
         std::cout << num << std::endl;
+
         conduct_felsenstein(start, aligned_codon_set[num], newick_order_max);
 
         if (do_upper == true) {
@@ -430,12 +438,15 @@ void calculate_derivative(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *e
     }
     thread_local int newick_order = newick_order_max;
     thread_local std::vector<newick_graph*> next_iteration = start->next;
-    thread_local gsl_matrix *F = gsl_matrix_alloc(64, 64);//freed
+    //thread_local gsl_matrix *F = gsl_matrix_alloc(64, 64);//freed
     thread_local size_t row_tar = 0;
     thread_local size_t col_tar = 0;
-//#pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for schedule(dynamic)
     for (size_t diff = 0; diff < 64 * 63 / 2; diff++) {
+        gsl_matrix *F = gsl_matrix_alloc(64, 64);//freed
+        std::cout << diff << std::endl;
         newick_order = newick_order_max;
+        next_iteration = start->next;
         row_tar = num_to_coordinate[diff][0];
         col_tar = num_to_coordinate[diff][1];
         while (newick_order >= 0) {
@@ -461,8 +472,11 @@ void calculate_derivative(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *e
                             }
                         }
                     }
-                    gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, eigen_inverse, dxepon_matrix[diff], 0.0, dxepon_matrix[diff]);
-                    gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, dxepon_matrix[diff], eigenvector, 0.0, dxepon_matrix[diff]);
+                    gsl_matrix *temp_matrix = gsl_matrix_alloc(64, 64);//freed
+                    gsl_matrix_memcpy(temp_matrix, dxepon_matrix[diff]);
+                    gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, eigen_inverse, temp_matrix, 0.0, dxepon_matrix[diff]);
+                    gsl_matrix_memcpy(temp_matrix, dxepon_matrix[diff]);
+                    gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, temp_matrix, eigenvector, 0.0, dxepon_matrix[diff]);
                     for (size_t row = 0; row < 64; row++) {
                         for (size_t col = 0; col < 64; col++) {
                             if (abs(gsl_vector_get(eigenvalue, row) - gsl_vector_get(eigenvalue, col)) < 1.0e-14) {
@@ -480,8 +494,11 @@ void calculate_derivative(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *e
                         }
                     }
                     gsl_matrix_mul_elements(dxepon_matrix[diff], F);
-                    gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, eigenvector, dxepon_matrix[diff], 0.0, dxepon_matrix[diff]);
-                    gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, dxepon_matrix[diff], eigen_inverse, 0.0, dxepon_matrix[num]);
+                    gsl_matrix_memcpy(temp_matrix, dxepon_matrix[diff]);
+                    gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, eigenvector, temp_matrix, 0.0, dxepon_matrix[diff]);
+                    gsl_matrix_memcpy(temp_matrix, dxepon_matrix[diff]);
+                    gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, temp_matrix, eigen_inverse, 0.0, dxepon_matrix[num]);
+                    gsl_matrix_free(temp_matrix);
                     //putting negative of gradient
                     for (size_t row = 0; row < 64; row++) {
                         for (size_t col = 0; col < 64; col++) {
@@ -502,8 +519,9 @@ void calculate_derivative(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *e
             }
             newick_order--;
         }
+        gsl_matrix_free(F);
     }
-    gsl_matrix_free(F);
+    //gsl_matrix_free(F);
     for (int num = 0; num < 2016; num++) {
         gsl_matrix_free(dxepon_matrix[num]);
     }
@@ -595,18 +613,28 @@ void update_expon_matrix(newick_start *start, gsl_matrix *eigenvector, gsl_matri
     gsl_vector_free(eigenvalue_temp);
 }
 
-//Todo: do I have to limit the length of each step? If I do, then how much?
+//Todo: do I have to limit the length of each step? If I do, then how much? -> first try : 60 (too big result), second try : 100 (got bigger)
 double backtracking(newick_start *start, gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *direction, gsl_matrix *gradient, double &lamb, gsl_matrix *eigenvector, gsl_matrix *eigen_inverse, gsl_vector *eigenvalue, int newick_order_max) {
     gsl_matrix *qmatrix_temp = gsl_matrix_alloc(64, 64);//freed
     gsl_matrix_memcpy(qmatrix_temp, qmatrix);
-    //TODO: Do I have to normalize in this step??-->seems like has to be normalized (equation needs normalization)
+    //TODO: Do I have to normalize qmatrix in this step??-->seems like has to be normalized (equation needs normalization)
+    double sum = 0.0;
+    for (int i = 0; i < 2016; i++) {
+        sum += pow(gsl_matrix_get(direction, i, 0), 2);
+    }
+    sum = sqrt(sum);
+    if (sum > 100) {
+        for (int i = 0; i < 2016; i++) {
+            gsl_matrix_set(direction, i, 0, gsl_matrix_get(direction, i, 0) * 100 / sum);
+        }
+    }
     double funcg_ori = calculate_maximization_function(start, 0, newick_order_max);
     double slope = 0.0;
     for (int num = 0; num < 2016; num++) {
         slope += gsl_matrix_get(gradient, num, 0) * gsl_matrix_get(direction, num, 0);
     }
     assert(slope < 0.0 && "Direction not going down");
-    const double machine_precision = 2.0e-14;
+    const double machine_precision = std::numeric_limits<double>::epsilon();
     const double alpha = 1.0e-4;
     double temp;
     double test = 0.0;
@@ -659,7 +687,8 @@ double backtracking(newick_start *start, gsl_matrix *qmatrix, double *codon_freq
                     lamb_tmp = -slope / (2.0 * cubic_b);
                 } else {
                     inside_sqrt = cubic_b * cubic_b - 3.0 * cubic_a * slope;
-                    if (inside_sqrt < 0.0) {
+                    //Todo: what if inside_sqrt goes to positive infinite? Is it a possible situation?
+                    if (inside_sqrt < 0.0 || isnan(inside_sqrt)) {
                         lamb_tmp = 0.5 * lamb;
                     } else if (cubic_b <= 0.0) {
                         lamb_tmp = (-cubic_b + sqrt(inside_sqrt)) / (3.0 * cubic_a);
@@ -788,13 +817,20 @@ double quasi_Newton_method(newick_start *start, gsl_matrix *qmatrix, double *cod
         for (int num = 0; num < 2016; num++) {
             gsl_matrix_set(hessian_append, num, num, 1.0 + gsl_matrix_get(hessian_append, num, num));
         }
-        gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, hessian_append, hessian, 0.0, hessian);
+        gsl_matrix *hessian_temp = gsl_matrix_alloc(2016, 2016);
+        gsl_matrix_memcpy(hessian_temp, hessian);
+        gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, hessian_append, hessian_temp, 0.0, hessian);
         gsl_blas_dgemm(CblasNoTrans, CblasTrans, -1.0 / denominator, gradient, dx, 0.0, hessian_append);
         for (int num = 0; num < 2016; num++) {
             gsl_matrix_set(hessian_append, num, num, 1.0 + gsl_matrix_get(hessian_append, num, num));
         }
-        gsl_blas_dgemm(CblasNoTrans, CblasTrans, 1.0, hessian, hessian_append, 0.0, hessian);
-        gsl_blas_dgemm(CblasNoTrans, CblasTrans, 1.0 / denominator, dx, dx, 0.0, hessian_append);
+        gsl_matrix_memcpy(hessian_temp, hessian);
+        gsl_blas_dgemm(CblasNoTrans, CblasTrans, 1.0, hessian_temp, hessian_append, 0.0, hessian);
+        for (int row = 0; row < 2016; row++) {
+            for (int col = 0; col < 2016; col++) {
+                gsl_matrix_set(hessian_append, row, col, gsl_matrix_get(dx, row, 0) * gsl_matrix_get(dx, col, 0) / denominator);
+            }
+        }
         gsl_matrix_add(hessian, hessian_append);
         //update gradient, qmatirx x and dx
         gsl_matrix_memcpy(x, x_new);
