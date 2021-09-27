@@ -6,6 +6,8 @@
 #include "process_maf.cpp"
 #include "process_maf.h"
 #include <gsl/gsl_eigen.h>
+#include <random>
+#include <chrono>
 
 double exchange[63*64/2] = { 0.581210,
 15.563110, 0.478004,
@@ -73,6 +75,8 @@ double exchange[63*64/2] = { 0.581210,
 
 int main() {
 
+    auto start_time = std::chrono::steady_clock::now();
+
     double coding_freq[64] = {0.042558, 0.024513, 0.030138, 0.036293, 0.017995, 0.012479, 0.008171, 0.020108, 0.020893, 0.010055, 0.009439, 0.014649, 0.018597, 0.016947, 0.020770, 0.030135, 0.026648, 0.007776, 0.012271, 0.013887, 0.017633, 0.006954, 0.005409, 0.013514, 0.003213, 0.002707, 0.001910, 0.006327, 0.013506, 0.005776, 0.010752, 0.012711, 0.045143, 0.020107, 0.019335, 0.037538, 0.016269, 0.012098, 0.006217, 0.020106, 0.011230, 0.009807, 0.006088, 0.022349, 0.012260, 0.011228, 0.010804, 0.021456, 0.001050, 0.014490, 0.000519, 0.019166, 0.019118, 0.014150, 0.008827, 0.023470, 0.000684, 0.005011, 0.010397, 0.008147, 0.026476, 0.018304, 0.026556, 0.026866 };
 
     std::vector<CDS_info> all_CDS_info = get_CDS_info("/Users/sukhwanpark/Downloads/sacCer3.ncbiRefSeq.gtf");
@@ -82,7 +86,7 @@ int main() {
     for (size_t row = 1; row < 64; row++) {
         for (size_t col = 0; col < 64; col++) {
             if (row > col) {
-                gsl_matrix_set(qmatrix, row, col, exchange[(row - 1) * (row) / 2 + col] + 1);
+                gsl_matrix_set(qmatrix, row, col, exchange[(row - 1) * (row) / 2 + col]);
                 gsl_matrix_set(qmatrix, col, row, gsl_matrix_get(qmatrix, row, col));
             }
         }
@@ -96,6 +100,12 @@ int main() {
     process_newick("/Users/sukhwanpark/Downloads/7yeast.nh", start_point, end_point, species_num, newick_order_max);
 
     std::vector<std::vector<aligned_codon>> aligned_codon_set = make_msa_to_aligned_coding_codon("/Users/sukhwanpark/Downloads/Scer_7way_same_size.maf", all_CDS_info, species_num);
+
+    auto middle_time = std::chrono::steady_clock::now();
+    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(middle_time - start_time).count() << std::endl;
+
+    unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+    std::shuffle(aligned_codon_set.begin(), aligned_codon_set.end(), std::default_random_engine(seed));
 
     //test newick
     int order = newick_order_max;
@@ -126,11 +136,18 @@ int main() {
     double function_value = 0.0;
     double function_value_old = 1.0;
 
-    while (abs(function_value - function_value_old) > 4.0e-12) {
+    conduct_expectation_step(aligned_codon_set, start_point, end_point, qmatrix, eigenvector, eigenvec_inverse,
+                             eigenvalue, coding_freq, newick_order_max);
+    function_value = quasi_Newton_method(start_point, qmatrix, coding_freq, eigenvector, eigenvec_inverse, eigenvalue, newick_order_max);
+    std::cout <<function_value << std::endl;
+    function_value_old = function_value - 1;
+
+    while (abs(function_value - function_value_old) > std::numeric_limits<double>::epsilon()) {
         function_value_old = function_value;
         conduct_expectation_step(aligned_codon_set, start_point, end_point, qmatrix, eigenvector, eigenvec_inverse,
                                  eigenvalue, coding_freq, newick_order_max);
         function_value = quasi_Newton_method(start_point, qmatrix, coding_freq, eigenvector, eigenvec_inverse, eigenvalue, newick_order_max);
+        std::cout << function_value << std::endl;
     }
 
     gsl_matrix_free(eigenvector);
@@ -145,5 +162,8 @@ int main() {
         }
         std::cout << std::endl;
     }
+
+    auto end_time = std::chrono::steady_clock::now();
+    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << std::endl;
     return 0;
 }

@@ -76,9 +76,6 @@ struct newick_start {
         next = {};
     }
 
-    newick_start(std::vector<newick_graph*> next) :
-            next(next) {}
-
     void connect_start(newick_start *start, newick_graph *current, size_t pos, newick_graph *end) {
         start->next.emplace_back(&current[pos]);
         current[pos].next = end;

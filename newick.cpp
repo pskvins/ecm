@@ -94,6 +94,7 @@ void process_newick(const char * newick_file_path, newick_start *start_point, ne
     }
     species_num = start_point->next.size();
     //give the order (or height) of each node
+    end_point->order = -1;
     std::vector<newick_graph*> iterate_previous = end_point->previous;
     while (!iterate_previous.empty()) {
         size_t size = iterate_previous.size();
