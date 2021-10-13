@@ -61,7 +61,7 @@ void update_nodes(newick_graph *nodes, size_t &count, std::string &lines, size_t
     right_pos = lines.find(')');
 }
 
-void process_newick(const char * newick_file_path, newick_start *start_point, newick_graph *end_point, int &species_num, int &order_max) {
+void process_newick(const char * newick_file_path, newick_start *start_point, newick_graph *end_point, int &species_num, int *order_max) {
     std::ifstream newick;
     newick.open(newick_file_path);
     std::string line;
@@ -99,13 +99,13 @@ void process_newick(const char * newick_file_path, newick_start *start_point, ne
     while (!iterate_previous.empty()) {
         size_t size = iterate_previous.size();
         for (size_t num = 0; num < size; num++) {
-            iterate_previous[num]->order = order_max;
+            iterate_previous[num]->order = *order_max;
             if (!iterate_previous[num]->previous.empty()) {
                 iterate_previous.insert(iterate_previous.end(), iterate_previous[num]->previous.begin(), iterate_previous[num]->previous.end());
             }
         }
         iterate_previous.erase(iterate_previous.begin(), iterate_previous.begin() + size);
-        order_max++;
+        (*order_max)++;
     }
-    order_max--;
+    (*order_max)--;
 }

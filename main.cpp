@@ -6,8 +6,6 @@
 #include "process_maf.cpp"
 #include "process_maf.h"
 #include <gsl/gsl_eigen.h>
-#include <random>
-#include <chrono>
 
 double exchange[63*64/2] = { 0.581210,
 15.563110, 0.478004,
@@ -82,11 +80,38 @@ int main() {
     std::vector<CDS_info> all_CDS_info = get_CDS_info("/Users/sukhwanpark/Downloads/sacCer3.ncbiRefSeq.gtf");
 
     gsl_matrix *qmatrix = gsl_matrix_alloc(64, 64);
+    gsl_vector *x = gsl_vector_alloc(2016);//freed
+
+    /*for (int i = 0; i < 2016 ; i++) {
+        gsl_vector_set(x, i, exchange[i]);
+    }*/
+    for (int i = 0; i < 2016; i++) {
+        switch (i % 5) {
+            case 0 :
+                gsl_vector_set(x, i, 0.1);
+                break;
+            case 1 :
+                gsl_vector_set(x, i, 0.2);
+                break;
+            case 2 :
+                gsl_vector_set(x, i, 0.3);
+                break;
+            case 3 :
+                gsl_vector_set(x, i, 0.4);
+                break;
+            case 4 :
+                gsl_vector_set(x, i, 0.5);
+                break;
+            default :
+                gsl_vector_set(x, i, 0.6);
+                break;
+        }
+    }
 
     for (size_t row = 1; row < 64; row++) {
         for (size_t col = 0; col < 64; col++) {
             if (row > col) {
-                gsl_matrix_set(qmatrix, row, col, exchange[(row - 1) * (row) / 2 + col]);
+                gsl_matrix_set(qmatrix, row, col, gsl_vector_get(x, (row - 1) * (row) / 2 + col));
                 gsl_matrix_set(qmatrix, col, row, gsl_matrix_get(qmatrix, row, col));
             }
         }
@@ -95,20 +120,22 @@ int main() {
     newick_start* start_point = new newick_start;
     newick_graph* end_point = new newick_graph;
     int species_num;
-    int newick_order_max = 0;
+    int order_max_value = 0;
+    int *newick_order_max;
+    newick_order_max = &order_max_value;
 
     process_newick("/Users/sukhwanpark/Downloads/7yeast.nh", start_point, end_point, species_num, newick_order_max);
 
     std::vector<std::vector<aligned_codon>> aligned_codon_set = make_msa_to_aligned_coding_codon("/Users/sukhwanpark/Downloads/Scer_7way_same_size.maf", all_CDS_info, species_num);
 
     auto middle_time = std::chrono::steady_clock::now();
-    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(middle_time - start_time).count() << std::endl;
+    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(middle_time - start_time).count() / 1000.0 << std::endl;
 
     unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
     std::shuffle(aligned_codon_set.begin(), aligned_codon_set.end(), std::default_random_engine(seed));
 
     //test newick
-    int order = newick_order_max;
+    /*int order = newick_order_max;
     std::vector<newick_graph*> iterator = start_point->next;
     size_t size = iterator.size();
     while (order >= 0) {
@@ -127,7 +154,7 @@ int main() {
             }
         }
         order--;
-    }
+    }*/
 
     gsl_matrix *eigenvector = gsl_matrix_alloc(64, 64);//freed
     gsl_matrix *eigenvec_inverse = gsl_matrix_alloc(64, 64);//freed
@@ -135,24 +162,68 @@ int main() {
 
     double function_value = 0.0;
     double function_value_old = 1.0;
+    bool non_diag_neg = false;
+    void_to_types *params = new void_to_types;
+    params->eigenvector = eigenvector;
+    params->eigenvec_inverse = eigenvec_inverse;
+    params->eigenvalue = eigenvalue;
+    params->codon_freq = coding_freq;
+    params->start = start_point;
+    params->newick_order_max = newick_order_max;
 
-    conduct_expectation_step(aligned_codon_set, start_point, end_point, qmatrix, eigenvector, eigenvec_inverse,
-                             eigenvalue, coding_freq, newick_order_max);
-    function_value = quasi_Newton_method(start_point, qmatrix, coding_freq, eigenvector, eigenvec_inverse, eigenvalue, newick_order_max);
-    std::cout <<function_value << std::endl;
+    /*
+    //function_value = quasi_Newton_method(start_point, qmatrix, coding_freq, eigenvector, eigenvec_inverse, eigenvalue, newick_order_max, non_diag_neg);
+    //function_value = quasi_newton_method_gsl(x, params);
+    std::cout << "function value : " << function_value << std::endl;
     function_value_old = function_value - 1;
 
-    while (abs(function_value - function_value_old) > std::numeric_limits<double>::epsilon()) {
+    while (isnan(function_value) || abs(function_value - function_value_old) > std::numeric_limits<double>::epsilon()) {
         function_value_old = function_value;
+        //move information of x to qmatrix (update qmatrix)
+        for (size_t row = 1; row < 64; row++) {
+            for (size_t col = 0; col < 64; col++) {
+                if (row > col) {
+                    gsl_matrix_set(qmatrix, row, col, gsl_vector_get(x,(row - 1) * (row) / 2 + col));
+                    gsl_matrix_set(qmatrix, col, row, gsl_matrix_get(qmatrix, row, col));
+                }
+            }
+        }
         conduct_expectation_step(aligned_codon_set, start_point, end_point, qmatrix, eigenvector, eigenvec_inverse,
                                  eigenvalue, coding_freq, newick_order_max);
-        function_value = quasi_Newton_method(start_point, qmatrix, coding_freq, eigenvector, eigenvec_inverse, eigenvalue, newick_order_max);
-        std::cout << function_value << std::endl;
+        non_diag_neg = false;
+        function_value = quasi_Newton_method(start_point, qmatrix, coding_freq, eigenvector, eigenvec_inverse, eigenvalue, newick_order_max, non_diag_neg);
+        //function_value = quasi_newton_method_gsl(x, params);
+        std::cout << "function value : " << function_value << std::endl;
     }
+
+    //get the result to the qmatrix
+    for (size_t row = 1; row < 64; row++) {
+        for (size_t col = 0; col < 64; col++) {
+            if (row > col) {
+                gsl_matrix_set(qmatrix, row, col, gsl_vector_get(x,(row - 1) * (row) / 2 + col));
+                gsl_matrix_set(qmatrix, col, row, gsl_matrix_get(qmatrix, row, col));
+            }
+        }
+    }
+    double sum = 0.0;
+    for (size_t dia = 0; dia < 64; dia++) {
+        for (size_t nondia = 0; nondia < 64; nondia++) {
+            if (dia != nondia) {
+                sum -= gsl_matrix_get(qmatrix, dia, nondia);
+            }
+        }
+        gsl_matrix_set(qmatrix, dia, dia, sum);
+        sum = 0.0;
+    }
+
+    //change all the negative entries into non-negative entries (Israel, Rosenthal & Wei (2001))
+    changing_to_nonneg_matrix(qmatrix);
+    */
 
     gsl_matrix_free(eigenvector);
     gsl_matrix_free(eigenvec_inverse);
     gsl_vector_free(eigenvalue);
+    gsl_vector_free(x);
 
     for (size_t row = 0; row < 64; row++) {
         for (size_t col = 0; col < 64; col++) {
@@ -163,7 +234,8 @@ int main() {
         std::cout << std::endl;
     }
 
+    delete(params);
     auto end_time = std::chrono::steady_clock::now();
-    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << std::endl;
+    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() / 1000.0 << std::endl;
     return 0;
 }
