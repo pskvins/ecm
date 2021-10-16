@@ -81,15 +81,6 @@ double num_to_coordinate[2016][2] = {{1, 0},
                                      {62, 0},{62, 1},{62, 2},{62, 3},{62, 4},{62, 5},{62, 6},{62, 7},{62, 8},{62, 9},{62, 10},{62, 11},{62, 12},{62, 13},{62, 14},{62, 15},{62, 16},{62, 17},{62, 18},{62, 19},{62, 20},{62, 21},{62, 22},{62, 23},{62, 24},{62, 25},{62, 26},{62, 27},{62, 28},{62, 29},{62, 30},{62, 31},{62, 32},{62, 33},{62, 34},{62, 35},{62, 36},{62, 37},{62, 38},{62, 39},{62, 40},{62, 41},{62, 42},{62, 43},{62, 44},{62, 45},{62, 46},{62, 47},{62, 48},{62, 49},{62, 50},{62, 51},{62, 52},{62, 53},{62, 54},{62, 55},{62, 56},{62, 57},{62, 58},{62, 59},{62, 60},{62, 61},
                                      {63, 0},{63, 1},{63, 2},{63, 3},{63, 4},{63, 5},{63, 6},{63, 7},{63, 8},{63, 9},{63, 10},{63, 11},{63, 12},{63, 13},{63, 14},{63, 15},{63, 16},{63, 17},{63, 18},{63, 19},{63, 20},{63, 21},{63, 22},{63, 23},{63, 24},{63, 25},{63, 26},{63, 27},{63, 28},{63, 29},{63, 30},{63, 31},{63, 32},{63, 33},{63, 34},{63, 35},{63, 36},{63, 37},{63, 38},{63, 39},{63, 40},{63, 41},{63, 42},{63, 43},{63, 44},{63, 45},{63, 46},{63, 47},{63, 48},{63, 49},{63, 50},{63, 51},{63, 52},{63, 53},{63, 54},{63, 55},{63, 56},{63, 57},{63, 58},{63, 59},{63, 60},{63, 61},{63, 62}};
 
-struct void_to_types {
-    gsl_matrix *eigenvector;
-    gsl_matrix *eigenvec_inverse;
-    gsl_vector *eigenvalue;
-    double *codon_freq;
-    newick_start *start;
-    int *newick_order_max;
-};
-
 //expectation step starts
 void normalizing_qmatrix(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *qmatrix_temp) {
     //set qmatrix_temp & normalize
@@ -176,15 +167,34 @@ gsl_matrix* calculate_expon_matrix(gsl_matrix *eigenvector, gsl_matrix *eigen_in
 
 void set_matrices(newick_start *start, gsl_matrix *eigenvector, gsl_matrix *eigen_inverse, gsl_vector *eigenvalue, int *newick_order_max) {
     std::vector<newick_graph*> next_iterator = start->next;
-    gsl_matrix *eigenvector_temp = gsl_matrix_alloc(64, 64);//freed
     gsl_vector *eigenvalue_temp = gsl_vector_alloc(64);//freed
+    gsl_matrix *eigenvector_temp = gsl_matrix_alloc(64, 64);//freed
     int newick_order = *newick_order_max;
     while (newick_order >= 0) {
         size_t size = next_iterator.size();
         for (size_t num = 0; num < size; num++) {
             if (next_iterator[num]->order == newick_order) {
-                gsl_matrix_memcpy(next_iterator[num]->expon_matrix,
-                                  calculate_expon_matrix(eigenvector, eigen_inverse, eigenvalue, eigenvector_temp, eigenvalue_temp, next_iterator[num]->branch_length));
+                gsl_matrix_memcpy(next_iterator[num]->expon_matrix, calculate_expon_matrix(eigenvector, eigen_inverse, eigenvalue, eigenvector_temp, eigenvalue_temp, next_iterator[num]->branch_length));
+
+                for (int row = 0; row < 64; row++) {
+                    for (int col = 0; col < 64; col++) {
+                        if (row == col) {
+                            gsl_matrix_set(next_iterator[num]->expon_eigen, row, col,
+                                           next_iterator[num]->branch_length * gsl_vector_get(eigenvalue_temp, row));
+                        }
+                        if (row > col) {
+                            if (abs(gsl_vector_get(eigenvalue, row) - gsl_vector_get(eigenvalue, col)) < 1.0e-13) {
+                                gsl_matrix_set(next_iterator[num]->expon_eigen, row, col,
+                                               next_iterator[num]->branch_length * gsl_vector_get(eigenvalue_temp, row));
+                                gsl_matrix_set(next_iterator[num]->expon_eigen, col, row,
+                                               gsl_matrix_get(next_iterator[num]->expon_eigen, row, col));
+                            } else {
+                                gsl_matrix_set(next_iterator[num]->expon_eigen, row, col,
+                                               (gsl_vector_get(eigenvalue_temp, row) - gsl_vector_get(eigenvalue_temp, col)) / (gsl_vector_get(eigenvalue, row) - gsl_vector_get(eigenvalue, col)));
+                            }
+                        }
+                    }
+                }
                 if (std::find(next_iterator.begin(), next_iterator.end(), next_iterator[num]->next) == next_iterator.end()) {
                     if (next_iterator[num]->next != NULL) {
                         next_iterator.emplace_back(next_iterator[num]->next);
@@ -220,7 +230,7 @@ double felsenstein_algorithm(newick_graph *node, int base) {
     }
 }
 
-void conduct_felsenstein(newick_start *start, std::vector<aligned_codon> codon_set, int *newick_order_max) {
+double conduct_felsenstein(newick_start *start, std::vector<aligned_codon> codon_set, gsl_matrix *eigen_inverse, int *newick_order_max, newick_graph *end, double *codon_freq) {
     std::vector<newick_graph*> next_iteration = start->next;
     for (size_t num = 0; num < next_iteration.size(); num++) {
         for (size_t set = 0; set < codon_set.size(); set++) {
@@ -243,6 +253,14 @@ void conduct_felsenstein(newick_start *start, std::vector<aligned_codon> codon_s
                 for (int codon = 0; codon < 64; codon++) {
                     next_iteration[num]->felsenstein[codon] = felsenstein_algorithm(next_iteration[num], codon);
                 }
+                double sum;
+                for (int row = 0; row < 64; row++) {
+                    sum = 0.0;
+                    for (int codon = 0; codon < 64; codon++) {
+                        sum += next_iteration[num]->felsenstein[codon] * gsl_matrix_get(eigen_inverse, row, codon);
+                    }
+                    next_iteration[num]->up_projection[row] = sum;
+                }
                 if (std::find(next_iteration.begin(), next_iteration.end(), next_iteration[num]->next) == next_iteration.end()) {
                     if (next_iteration[num]->next != NULL) {
                         next_iteration.emplace_back(next_iteration[num]->next);
@@ -255,9 +273,14 @@ void conduct_felsenstein(newick_start *start, std::vector<aligned_codon> codon_s
         }
         newick_order--;
     }
+    double denominator = 0.0;
+    for (char base = 0; base < 64; base++) {
+        denominator += codon_freq[base] * end->felsenstein[base];
+    }
+    return denominator;
 }
 
-void calculate_upper(newick_graph *end, double *codon_freq) {
+void calculate_upper(newick_graph *end, double *codon_freq, gsl_matrix *eigenvector) {
     std::vector<newick_graph*> next_iteration = end->previous;
     for (size_t num = 0; num < 64; num++) {
         end->upper[num] = codon_freq[num];
@@ -285,6 +308,14 @@ void calculate_upper(newick_graph *end, double *codon_freq) {
                 fel_upper = sibling * me;
                 next_iteration[num]->upper[base] = fel_upper;
             }
+            double sum;
+            for (int col = 0; col < 64; col++) {
+                sum = 0.0;
+                for (int codon = 0; codon < 64; codon++) {
+                    sum += next_iteration[num]->upper[codon] * gsl_matrix_get(eigenvector, codon, col);
+                }
+                next_iteration[num]->down_projection[col] = sum;
+            }
             if (!(next_iteration[num]->previous.empty())) {
                 next_iteration.push_back(next_iteration[num]->previous[0]);
                 next_iteration.push_back(next_iteration[num]->previous[1]);
@@ -293,81 +324,6 @@ void calculate_upper(newick_graph *end, double *codon_freq) {
         next_iteration.erase(next_iteration.begin(), next_iteration.begin() + size);
     }
 }
-
-void update_upper(newick_start *start, newick_graph *end, double *codon_freq, int *newick_order_max) {
-    //calculate denominator
-    double denominator = 0.0;
-    std::vector<newick_graph*> next_iteration = start->next;
-    for (char base = 0; base < 64; base++) {
-        denominator += codon_freq[base] * end->felsenstein[base];
-    }
-
-    int newick_order = *newick_order_max;
-    //update upper
-    while (newick_order >= 0) {
-        int size = next_iteration.size();
-        for (size_t num = 0; num < size; num++) {
-            if (next_iteration[num]->order == newick_order) {
-                for (char base_parent = 0; base_parent < 64; base_parent++) {
-                    for (char base_child = 0; base_child < 64; base_child++) {
-                        gsl_matrix_set(next_iteration[num]->updated_upper, base_parent, base_child, next_iteration[num]->felsenstein[base_child] * next_iteration[num]->upper[base_parent] *
-                            gsl_matrix_get(next_iteration[num]->expon_matrix, base_parent, base_child) /denominator);
-                    }
-                }
-                if (std::find(next_iteration.begin(), next_iteration.end(), next_iteration[num]->next) == next_iteration.end()) {
-                    if (next_iteration[num]->next != NULL) {
-                        next_iteration.emplace_back(next_iteration[num]->next);
-                    }
-                }
-                next_iteration.erase(next_iteration.begin() + num);
-                num--;
-                size--;
-            }
-        }
-        newick_order--;
-    }
-}
-
-/*void calculate_expectation(newick_start *start, int *newick_order_max) {
-    std::vector<newick_graph*> next_iteration = start->next;
-    int newick_order = *newick_order_max;
-    while (newick_order >= 0) {
-        int size = next_iteration.size();
-        for (size_t num = 0; num < size; num++) {
-            if (next_iteration[num]->order == newick_order) {
-                for (char base_next = 0; base_next < 64; base_next++) {
-                    double denominator = 0.0;
-                    for (char base_acc = 0; base_acc < 64; base_acc++) {
-                        denominator += next_iteration[num]->felsenstein[base_acc] *
-                                       gsl_matrix_get(next_iteration[num]->expon_matrix, base_next, base_acc);
-                    }
-                    //Todo: if denominator = 0, for sure numerator is 0, so make the expectation 0 (no need to calculate) --> is this the right solution?
-                    if (denominator == 0) {
-                        for (char base_curr = 0; base_curr < 64; base_curr++) {
-                            next_iteration[num]->expectation[64 * base_next + base_curr] = 0.0;
-                        }
-                        continue;
-                    }
-                    for (char base_curr = 0; base_curr < 64; base_curr++) {
-                        next_iteration[num]->expectation[64 * base_next + base_curr] =
-                                next_iteration[num]->felsenstein[base_curr] *
-                                gsl_matrix_get(next_iteration[num]->expon_matrix, base_next, base_curr) *
-                                next_iteration[num]->next->updated_upper[base_next] / denominator;
-                    }
-                }
-                if (std::find(next_iteration.begin(), next_iteration.end(), next_iteration[num]->next) == next_iteration.end()) {
-                    if (next_iteration[num]->next != NULL) {
-                        next_iteration.emplace_back(next_iteration[num]->next);
-                    }
-                }
-                next_iteration.erase(next_iteration.begin() + num);
-                num--;
-                size--;
-            }
-        }
-        newick_order--;
-    }
-}*/
 
 void changing_to_nonneg_matrix(gsl_matrix *qmatrix) {
     double g_i = 0.0;
@@ -395,10 +351,25 @@ void changing_to_nonneg_matrix(gsl_matrix *qmatrix) {
 }
 
 //Integrating all the expectation steps
-void EM_algorithm(std::vector<std::vector<aligned_codon>> aligned_codon_set, newick_start *start, newick_graph *end,
-                              gsl_matrix *qmatrix, gsl_matrix *eigenvector, gsl_matrix *eigen_inverse, gsl_vector *eigenvalue, double *codon_freq, int *newick_order_max) {
-    //TODO: find reasonable number to iterate
-    for (int num = 0; num < 20000; num++) {
+double EM_algorithm(std::vector<std::vector<aligned_codon>> aligned_codon_set, newick_start *start, newick_graph *end, gsl_matrix *total_count, gsl_matrix *eigencount, gsl_matrix *eigencount_col,
+                              gsl_matrix *qmatrix, gsl_matrix *eigenvector, gsl_matrix *eigen_inverse, gsl_vector *eigenvalue, double *codon_freq, int *newick_order_max, double *omega) {
+
+    double joint_likelihood = 0.0;
+
+    gsl_matrix_set_all(eigencount, 0.0);
+
+    gsl_matrix *qmatrix_temp = gsl_matrix_alloc(64, 64);//freed
+
+    gsl_matrix_memcpy(qmatrix_temp, qmatrix);
+
+    get_eigenvector_and_inverse(qmatrix_temp, eigenvector, eigen_inverse, eigenvalue);
+    gsl_matrix_free(qmatrix_temp);
+
+    set_matrices(start, eigenvector, eigen_inverse, eigenvalue, newick_order_max);
+
+    double element, denominator, sum;
+
+    for (int num = 0; num < 2000; num++) {
         std::vector<newick_graph *> next_iterator = start->next;
         for (size_t num = 0; num < next_iterator.size(); num++) {
             for (char base = 0; base < 64; base++) {
@@ -406,26 +377,103 @@ void EM_algorithm(std::vector<std::vector<aligned_codon>> aligned_codon_set, new
             }
         }
 
-        gsl_matrix *qmatrix_temp = gsl_matrix_alloc(64, 64);//freed
+        denominator = 0.0;
 
-        normalizing_qmatrix(qmatrix, codon_freq, qmatrix_temp);
-
-        get_eigenvector_and_inverse(qmatrix_temp, eigenvector, eigen_inverse, eigenvalue);
-        gsl_matrix_free(qmatrix_temp);
-
-        set_matrices(start, eigenvector, eigen_inverse, eigenvalue, newick_order_max);
-
-        bool do_upper = true;
-
-
-        conduct_felsenstein(start, aligned_codon_set[num], newick_order_max);
-
-        if (do_upper == true) {
-            calculate_upper(end, codon_freq);
-            do_upper = false;
+        denominator = conduct_felsenstein(start, aligned_codon_set[num], eigen_inverse, newick_order_max, end, codon_freq);
+        if (denominator == 0) {
+            std::cout << "denominator is 0" << std::endl;
+            exit(-1);
         }
+        joint_likelihood += denominator;
+        denominator = 1 / denominator;
 
-        update_upper(start, end, codon_freq, newick_order_max);
+        calculate_upper(end, codon_freq, eigenvector);
 
+        int order = *newick_order_max;
+        std::vector<newick_graph*> iterator = start->next;
+        size_t size;
+        gsl_matrix_set_all(eigencount_col, 0.0);
+        while (order >= 0) {
+            size = iterator.size();
+            for (int num = 0; num < size; num++) {
+                if (iterator[num]->order == order) {
+                    // Todo: Do something
+                    for (int row = 0; row < 64; row++) {
+                        for (int col = 0; col < 64; col++) {
+                            gsl_matrix_set(eigencount_col, row, col, gsl_matrix_get(eigencount_col, row, col) +
+                            next_iterator[num]->down_projection[row] * next_iterator[num]->up_projection[col] * gsl_matrix_get(next_iterator[num]->expon_eigen, row, col));
+                        }
+                    }
+                    if (std::find(iterator.begin(), iterator.end(), iterator[num]->next) == iterator.end()) {
+                        if (iterator[num]->next != NULL) {
+                            iterator.emplace_back(iterator[num]->next);
+                        }
+                    }
+                    iterator.erase(iterator.begin() + num);
+                    num--;
+                    size--;
+                }
+            }
+            order--;
+        }
+        gsl_matrix_scale(eigencount_col, denominator);
+
+        gsl_matrix_add(eigencount, eigencount_col);
     }
+
+    for (int row = 0; row < 64; row++) {
+        for (int col = 0; col < 64; col++) {
+            if (row >= col) {
+                sum = 0.0;
+                for (int k = 0; k < 64; k++) {
+                    element = 0.0;
+                    for (int l = 0; l < 64; l++) {
+                        element += gsl_matrix_get(eigenvector, col, l) * gsl_matrix_get(eigencount, k, l);
+                    }
+                    sum += gsl_matrix_get(eigen_inverse, k, row) * element;
+                }
+                gsl_matrix_set(total_count, row, col, gsl_matrix_get(qmatrix, row, col) * sum);
+            }
+        }
+    }
+    for (int i = 0; i < 64; i++) {
+        omega[i] = gsl_matrix_get(total_count, i, i) / gsl_matrix_get(qmatrix, i, i);
+    }
+
+    for (int row = 0; row < 64; row++) {
+        for (int col = 0; col < 64; col++) {
+            if (row > col) {
+                gsl_matrix_set(qmatrix, row, col, gsl_matrix_get(total_count, row, col) / omega[row]);
+                gsl_matrix_set(qmatrix, col, row, gsl_matrix_get(qmatrix, row, col) * codon_freq[col] / codon_freq[row]);
+            }
+        }
+    }
+
+    for (int row = 0; row < 64; row++) {
+        sum = 0.0;
+        for (int col = 0; col < 64; col++) {
+            if (row != col) {
+                sum += gsl_matrix_get(qmatrix, row, col);
+            }
+        }
+        gsl_matrix_set(qmatrix, row, row, -sum);
+    }
+    //changing_to_nonneg_matrix(qmatrix);
+
+
+    gsl_vector *scale = gsl_vector_alloc(64);
+    for (int i = 0; i < 64; i++) {
+        gsl_vector_set(scale, i, codon_freq[i]);
+    }
+    gsl_matrix_scale_columns(qmatrix, scale);
+    gsl_vector_free(scale);
+    for (size_t row = 0; row < 64; row++) {
+        for (size_t col = 0; col < 64; col++) {
+            std::cout << gsl_matrix_get(qmatrix, row, col) << ", ";
+        }
+        std::cout << std::endl;
+    }
+
+    normalizing_qmatrix(qmatrix, codon_freq, qmatrix);
+    return joint_likelihood;
 }

@@ -23,6 +23,9 @@ struct newick_graph {
     gsl_matrix *updated_upper;
     bool base[64];
     gsl_matrix *expon_matrix;
+    gsl_matrix *expon_eigen;
+    double up_projection[64];
+    double down_projection[64];
     int order;
 
     newick_graph() {
@@ -35,10 +38,13 @@ struct newick_graph {
         for (int num = 0; num < 64; num++) {
             felsenstein[num] = 0.0;
             upper[num] = 0.0;
+            up_projection[num] = 0.0;
+            down_projection[num] = 0.0;
             base[num] = true;
         }
         expon_matrix = gsl_matrix_alloc(64, 64);
         updated_upper = gsl_matrix_alloc(64, 64);
+        expon_eigen = gsl_matrix_alloc(64, 64);
     }
 
     newick_graph(newick_graph *next, std::string parent, float branch_length, std::string species, std::vector<newick_graph*> previous) :

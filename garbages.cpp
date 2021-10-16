@@ -15,6 +15,90 @@
 #include <chrono>
 #include <gsl/gsl_multimin.h>
 
+struct void_to_types {
+    gsl_matrix *eigenvector;
+    gsl_matrix *eigenvec_inverse;
+    gsl_vector *eigenvalue;
+    double *codon_freq;
+    newick_start *start;
+    int *newick_order_max;
+};
+
+void update_upper(newick_start *start, newick_graph *end, double *codon_freq, int *newick_order_max) {
+    //calculate denominator
+    double denominator = 0.0;
+    std::vector<newick_graph*> next_iteration = start->next;
+    for (char base = 0; base < 64; base++) {
+        denominator += codon_freq[base] * end->felsenstein[base];
+    }
+
+    int newick_order = *newick_order_max;
+    //update upper
+    while (newick_order >= 0) {
+        int size = next_iteration.size();
+        for (size_t num = 0; num < size; num++) {
+            if (next_iteration[num]->order == newick_order) {
+                for (char base_parent = 0; base_parent < 64; base_parent++) {
+                    for (char base_child = 0; base_child < 64; base_child++) {
+                        gsl_matrix_set(next_iteration[num]->updated_upper, base_parent, base_child, next_iteration[num]->felsenstein[base_child] * next_iteration[num]->upper[base_parent] *
+                                                                                                    gsl_matrix_get(next_iteration[num]->expon_matrix, base_parent, base_child) /denominator);
+                    }
+                }
+                if (std::find(next_iteration.begin(), next_iteration.end(), next_iteration[num]->next) == next_iteration.end()) {
+                    if (next_iteration[num]->next != NULL) {
+                        next_iteration.emplace_back(next_iteration[num]->next);
+                    }
+                }
+                next_iteration.erase(next_iteration.begin() + num);
+                num--;
+                size--;
+            }
+        }
+        newick_order--;
+    }
+}
+
+/*void calculate_expectation(newick_start *start, int *newick_order_max) {
+    std::vector<newick_graph*> next_iteration = start->next;
+    int newick_order = *newick_order_max;
+    while (newick_order >= 0) {
+        int size = next_iteration.size();
+        for (size_t num = 0; num < size; num++) {
+            if (next_iteration[num]->order == newick_order) {
+                for (char base_next = 0; base_next < 64; base_next++) {
+                    double denominator = 0.0;
+                    for (char base_acc = 0; base_acc < 64; base_acc++) {
+                        denominator += next_iteration[num]->felsenstein[base_acc] *
+                                       gsl_matrix_get(next_iteration[num]->expon_matrix, base_next, base_acc);
+                    }
+                    //Todo: if denominator = 0, for sure numerator is 0, so make the expectation 0 (no need to calculate) --> is this the right solution?
+                    if (denominator == 0) {
+                        for (char base_curr = 0; base_curr < 64; base_curr++) {
+                            next_iteration[num]->expectation[64 * base_next + base_curr] = 0.0;
+                        }
+                        continue;
+                    }
+                    for (char base_curr = 0; base_curr < 64; base_curr++) {
+                        next_iteration[num]->expectation[64 * base_next + base_curr] =
+                                next_iteration[num]->felsenstein[base_curr] *
+                                gsl_matrix_get(next_iteration[num]->expon_matrix, base_next, base_curr) *
+                                next_iteration[num]->next->updated_upper[base_next] / denominator;
+                    }
+                }
+                if (std::find(next_iteration.begin(), next_iteration.end(), next_iteration[num]->next) == next_iteration.end()) {
+                    if (next_iteration[num]->next != NULL) {
+                        next_iteration.emplace_back(next_iteration[num]->next);
+                    }
+                }
+                next_iteration.erase(next_iteration.begin() + num);
+                num--;
+                size--;
+            }
+        }
+        newick_order--;
+    }
+}*/
+
 //copying maximization_step
 void calculate_derivative(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *eigenvector, gsl_matrix *eigen_inverse, gsl_vector *eigenvalue, newick_start *start, gsl_vector *gradient, int *newick_order_max) {
     std::cout << "start calculating gradient" << std::endl;

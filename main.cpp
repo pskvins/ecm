@@ -82,10 +82,10 @@ int main() {
     gsl_matrix *qmatrix = gsl_matrix_alloc(64, 64);
     gsl_vector *x = gsl_vector_alloc(2016);//freed
 
-    /*for (int i = 0; i < 2016 ; i++) {
-        gsl_vector_set(x, i, exchange[i]);
-    }*/
-    for (int i = 0; i < 2016; i++) {
+    for (int i = 0; i < 2016 ; i++) {
+        gsl_vector_set(x, i, exchange[i] + 0.3);
+    }
+    /*for (int i = 0; i < 2016; i++) {
         switch (i % 5) {
             case 0 :
                 gsl_vector_set(x, i, 0.1);
@@ -106,7 +106,7 @@ int main() {
                 gsl_vector_set(x, i, 0.6);
                 break;
         }
-    }
+    }*/
 
     for (size_t row = 1; row < 64; row++) {
         for (size_t col = 0; col < 64; col++) {
@@ -135,9 +135,9 @@ int main() {
     std::shuffle(aligned_codon_set.begin(), aligned_codon_set.end(), std::default_random_engine(seed));
 
     //test newick
-    /*int order = newick_order_max;
+    /*int order = *newick_order_max;
     std::vector<newick_graph*> iterator = start_point->next;
-    size_t size = iterator.size();
+    size_t size;
     while (order >= 0) {
         size = iterator.size();
         for (int num = 0; num < size; num++) {
@@ -159,82 +159,53 @@ int main() {
     gsl_matrix *eigenvector = gsl_matrix_alloc(64, 64);//freed
     gsl_matrix *eigenvec_inverse = gsl_matrix_alloc(64, 64);//freed
     gsl_vector *eigenvalue = gsl_vector_alloc(64);//freed
+    gsl_matrix *expon_qmatrix = gsl_matrix_alloc(64, 64);
 
-    double function_value = 0.0;
-    double function_value_old = 1.0;
-    bool non_diag_neg = false;
-    void_to_types *params = new void_to_types;
-    params->eigenvector = eigenvector;
-    params->eigenvec_inverse = eigenvec_inverse;
-    params->eigenvalue = eigenvalue;
-    params->codon_freq = coding_freq;
-    params->start = start_point;
-    params->newick_order_max = newick_order_max;
+    gsl_matrix *total_count = gsl_matrix_alloc(64, 64);
+    gsl_matrix *eigencount = gsl_matrix_alloc(64, 64);
+    gsl_matrix *eigencount_col = gsl_matrix_alloc(64, 64);
 
-    /*
-    //function_value = quasi_Newton_method(start_point, qmatrix, coding_freq, eigenvector, eigenvec_inverse, eigenvalue, newick_order_max, non_diag_neg);
-    //function_value = quasi_newton_method_gsl(x, params);
-    std::cout << "function value : " << function_value << std::endl;
-    function_value_old = function_value - 1;
+    normalizing_qmatrix(qmatrix, coding_freq, qmatrix);
 
-    while (isnan(function_value) || abs(function_value - function_value_old) > std::numeric_limits<double>::epsilon()) {
-        function_value_old = function_value;
-        //move information of x to qmatrix (update qmatrix)
-        for (size_t row = 1; row < 64; row++) {
-            for (size_t col = 0; col < 64; col++) {
-                if (row > col) {
-                    gsl_matrix_set(qmatrix, row, col, gsl_vector_get(x,(row - 1) * (row) / 2 + col));
-                    gsl_matrix_set(qmatrix, col, row, gsl_matrix_get(qmatrix, row, col));
-                }
-            }
-        }
-        conduct_expectation_step(aligned_codon_set, start_point, end_point, qmatrix, eigenvector, eigenvec_inverse,
-                                 eigenvalue, coding_freq, newick_order_max);
-        non_diag_neg = false;
-        function_value = quasi_Newton_method(start_point, qmatrix, coding_freq, eigenvector, eigenvec_inverse, eigenvalue, newick_order_max, non_diag_neg);
-        //function_value = quasi_newton_method_gsl(x, params);
-        std::cout << "function value : " << function_value << std::endl;
+    double omega[64];
+
+    double likelihood = 0.0;
+    double likelihood_old = 1.0;
+    int count = 0;
+
+    while (abs(likelihood - likelihood_old) > 1.0e-8) {
+        likelihood_old = likelihood;
+        std::cout << "Iteration start : " << count << std::endl;
+        likelihood = EM_algorithm(aligned_codon_set, start_point, end_point, total_count, eigencount, eigencount_col,
+        qmatrix, eigenvector, eigenvec_inverse, eigenvalue, coding_freq, newick_order_max, omega);
+        std::cout << "likelihood : " << likelihood << std::endl;
+        std::cout << "Difference : " << abs(likelihood - likelihood_old) << std::endl;
+        count++;
     }
-
-    //get the result to the qmatrix
-    for (size_t row = 1; row < 64; row++) {
-        for (size_t col = 0; col < 64; col++) {
-            if (row > col) {
-                gsl_matrix_set(qmatrix, row, col, gsl_vector_get(x,(row - 1) * (row) / 2 + col));
-                gsl_matrix_set(qmatrix, col, row, gsl_matrix_get(qmatrix, row, col));
-            }
-        }
-    }
-    double sum = 0.0;
-    for (size_t dia = 0; dia < 64; dia++) {
-        for (size_t nondia = 0; nondia < 64; nondia++) {
-            if (dia != nondia) {
-                sum -= gsl_matrix_get(qmatrix, dia, nondia);
-            }
-        }
-        gsl_matrix_set(qmatrix, dia, dia, sum);
-        sum = 0.0;
-    }
-
-    //change all the negative entries into non-negative entries (Israel, Rosenthal & Wei (2001))
-    changing_to_nonneg_matrix(qmatrix);
-    */
 
     gsl_matrix_free(eigenvector);
     gsl_matrix_free(eigenvec_inverse);
     gsl_vector_free(eigenvalue);
+    gsl_matrix_free(expon_qmatrix);
+    gsl_matrix_free(total_count);
+    gsl_matrix_free(eigencount);
+    gsl_matrix_free(eigencount_col);
     gsl_vector_free(x);
+
+    gsl_vector *scale = gsl_vector_alloc(64);
+    for (int i = 0; i < 64; i++) {
+        gsl_vector_set(scale, i, 1 / coding_freq[i]);
+    }
+
+    gsl_matrix_scale_columns(qmatrix, scale);
+    gsl_vector_free(scale);
 
     for (size_t row = 0; row < 64; row++) {
         for (size_t col = 0; col < 64; col++) {
-            if (row > col) {
-                std::cout << gsl_matrix_get(qmatrix, row, col) << ", ";
-            }
+            std::cout << gsl_matrix_get(qmatrix, row, col) << ", ";
         }
         std::cout << std::endl;
     }
-
-    delete(params);
     auto end_time = std::chrono::steady_clock::now();
     std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() / 1000.0 << std::endl;
     return 0;
