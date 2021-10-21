@@ -11,10 +11,8 @@
 #include "process_maf.h"
 #include <assert.h>
 #include <omp.h>
-#include <limits>
 #include <random>
 #include <chrono>
-#include <gsl/gsl_multimin.h>
 
 //map for maximization step
 double num_to_coordinate[2016][2] = {{1, 0},
@@ -108,11 +106,10 @@ void normalizing_qmatrix(gsl_matrix *qmatrix, double *codon_freq, gsl_matrix *qm
     gsl_matrix_scale(qmatrix_temp, 1 / sum);
 }
 
-void get_eigenvector_and_inverse(gsl_matrix *qmatrix_temp, gsl_matrix *eigenvector, gsl_matrix *eigenvec_inverse, gsl_vector *eigenvalue) {
+void get_eigenvector_and_inverse(gsl_matrix *qmatrix_temp, gsl_matrix *eigenvector, gsl_matrix *eigenvec_inverse, gsl_vector *eigenvalue,
+                                 gsl_matrix_complex *eigenvector_com, gsl_vector_complex *eigenvalue_com, bool &eigen_is_complex) {
     //get eigenvalues and left & right eigenvectors
-    gsl_vector_complex *eigenvalue_com = gsl_vector_complex_alloc(64);//freed
     gsl_eigen_nonsymmv_workspace *eigen_space = gsl_eigen_nonsymmv_alloc(64);//freed
-    gsl_matrix_complex *eigenvector_com = gsl_matrix_complex_alloc(64, 64);//freed
     gsl_eigen_nonsymmv(qmatrix_temp, eigenvalue_com, eigenvector_com, eigen_space);
     gsl_eigen_nonsymmv_free(eigen_space);
 
@@ -123,7 +120,8 @@ void get_eigenvector_and_inverse(gsl_matrix *qmatrix_temp, gsl_matrix *eigenvect
         check = gsl_vector_complex_get(eigenvalue_com, i);
         if (check.dat[1] != 0 ) {
             std::cout << "Eigenvalues are not real : " << check.dat[1] << std::endl;
-            exit(-1);
+            eigen_is_complex = true;
+            return;
         }
         if (abs(check.dat[0]) < 1.0e-14) {
             gsl_vector_set(eigenvalue, i, 0);
@@ -131,14 +129,12 @@ void get_eigenvector_and_inverse(gsl_matrix *qmatrix_temp, gsl_matrix *eigenvect
             gsl_vector_set(eigenvalue, i, check.dat[0]);
         }
     }
-    gsl_vector_complex_free(eigenvalue_com);
 
     for (size_t row = 0; row < 64; row++) {
         for (size_t col = 0; col < 64; col++) {
             gsl_matrix_set(eigenvector, row, col, gsl_matrix_complex_get(eigenvector_com, row, col).dat[0]);
         }
     }
-    gsl_matrix_complex_free(eigenvector_com);
 
     gsl_matrix_memcpy(eigenvec_inverse, eigenvector);
     gsl_permutation *p = gsl_permutation_alloc(64);//freed
@@ -162,6 +158,14 @@ gsl_matrix* calculate_expon_matrix(gsl_matrix *eigenvector, gsl_matrix *eigen_in
     }
     gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, eigen_temp_scnd, eigen_inverse, 0.0, eigenvector_temp);
     gsl_matrix_free(eigen_temp_scnd);
+    for (int row = 0; row < 64; row++) {
+        for (int col = 0; col < 64; col++) {
+            if (gsl_matrix_get(eigenvector_temp, row, col) > 1 || gsl_matrix_get(eigenvector_temp, row, col) < 0) {
+                std::cout << "Probability at weird range : " << gsl_matrix_get(eigenvector_temp, row, col) << std::endl;
+                exit(-1);
+            }
+        }
+    }
     return eigenvector_temp;
 }
 
@@ -175,7 +179,6 @@ void set_matrices(newick_start *start, gsl_matrix *eigenvector, gsl_matrix *eige
         for (size_t num = 0; num < size; num++) {
             if (next_iterator[num]->order == newick_order) {
                 gsl_matrix_memcpy(next_iterator[num]->expon_matrix, calculate_expon_matrix(eigenvector, eigen_inverse, eigenvalue, eigenvector_temp, eigenvalue_temp, next_iterator[num]->branch_length));
-
                 for (int row = 0; row < 64; row++) {
                     for (int col = 0; col < 64; col++) {
                         if (row == col) {
@@ -186,11 +189,11 @@ void set_matrices(newick_start *start, gsl_matrix *eigenvector, gsl_matrix *eige
                             if (abs(gsl_vector_get(eigenvalue, row) - gsl_vector_get(eigenvalue, col)) < 1.0e-13) {
                                 gsl_matrix_set(next_iterator[num]->expon_eigen, row, col,
                                                next_iterator[num]->branch_length * gsl_vector_get(eigenvalue_temp, row));
-                                gsl_matrix_set(next_iterator[num]->expon_eigen, col, row,
-                                               gsl_matrix_get(next_iterator[num]->expon_eigen, row, col));
+                                gsl_matrix_set(next_iterator[num]->expon_eigen, col, row, gsl_matrix_get(next_iterator[num]->expon_eigen, row, col));
                             } else {
                                 gsl_matrix_set(next_iterator[num]->expon_eigen, row, col,
                                                (gsl_vector_get(eigenvalue_temp, row) - gsl_vector_get(eigenvalue_temp, col)) / (gsl_vector_get(eigenvalue, row) - gsl_vector_get(eigenvalue, col)));
+                                gsl_matrix_set(next_iterator[num]->expon_eigen, col, row, gsl_matrix_get(next_iterator[num]->expon_eigen, row, col));
                             }
                         }
                     }
@@ -230,7 +233,8 @@ double felsenstein_algorithm(newick_graph *node, int base) {
     }
 }
 
-double conduct_felsenstein(newick_start *start, std::vector<aligned_codon> codon_set, gsl_matrix *eigen_inverse, int *newick_order_max, newick_graph *end, double *codon_freq) {
+double conduct_felsenstein(newick_start *start, std::vector<aligned_codon> codon_set, gsl_matrix *eigen_inverse, gsl_matrix_complex *eigen_inverse_com,
+                           int *newick_order_max, newick_graph *end, double *codon_freq, bool eigen_is_complex) {
     std::vector<newick_graph*> next_iteration = start->next;
     for (size_t num = 0; num < next_iteration.size(); num++) {
         for (size_t set = 0; set < codon_set.size(); set++) {
@@ -253,13 +257,24 @@ double conduct_felsenstein(newick_start *start, std::vector<aligned_codon> codon
                 for (int codon = 0; codon < 64; codon++) {
                     next_iteration[num]->felsenstein[codon] = felsenstein_algorithm(next_iteration[num], codon);
                 }
-                double sum;
-                for (int row = 0; row < 64; row++) {
-                    sum = 0.0;
-                    for (int codon = 0; codon < 64; codon++) {
-                        sum += next_iteration[num]->felsenstein[codon] * gsl_matrix_get(eigen_inverse, row, codon);
+                if (eigen_is_complex == false) {
+                    double sum;
+                    for (int row = 0; row < 64; row++) {
+                        sum = 0.0;
+                        for (int codon = 0; codon < 64; codon++) {
+                            sum += next_iteration[num]->felsenstein[codon] * gsl_matrix_get(eigen_inverse, row, codon);
+                        }
+                        next_iteration[num]->up_projection[row] = sum;
                     }
-                    next_iteration[num]->up_projection[row] = sum;
+                } else {
+                    gsl_complex sum;
+                    for (int row = 0; row < 64; row++) {
+                        sum = gsl_complex_rect(0.0, 0.0);
+                        for (int codon = 0; codon < 64; codon++) {
+                            sum = gsl_complex_add(sum, gsl_complex_mul_real(gsl_matrix_complex_get(eigen_inverse_com, row, codon), next_iteration[num]->felsenstein[codon]));
+                        }
+                        next_iteration[num]->up_projection_com[row] = sum;
+                    }
                 }
                 if (std::find(next_iteration.begin(), next_iteration.end(), next_iteration[num]->next) == next_iteration.end()) {
                     if (next_iteration[num]->next != NULL) {
@@ -280,7 +295,7 @@ double conduct_felsenstein(newick_start *start, std::vector<aligned_codon> codon
     return denominator;
 }
 
-void calculate_upper(newick_graph *end, double *codon_freq, gsl_matrix *eigenvector) {
+void calculate_upper(newick_graph *end, double *codon_freq, gsl_matrix *eigenvector, gsl_matrix_complex *eigenvector_com, bool eigen_is_complex) {
     std::vector<newick_graph*> next_iteration = end->previous;
     for (size_t num = 0; num < 64; num++) {
         end->upper[num] = codon_freq[num];
@@ -308,13 +323,24 @@ void calculate_upper(newick_graph *end, double *codon_freq, gsl_matrix *eigenvec
                 fel_upper = sibling * me;
                 next_iteration[num]->upper[base] = fel_upper;
             }
-            double sum;
-            for (int col = 0; col < 64; col++) {
-                sum = 0.0;
-                for (int codon = 0; codon < 64; codon++) {
-                    sum += next_iteration[num]->upper[codon] * gsl_matrix_get(eigenvector, codon, col);
+            if (eigen_is_complex == false) {
+                double sum;
+                for (int col = 0; col < 64; col++) {
+                    sum = 0.0;
+                    for (int codon = 0; codon < 64; codon++) {
+                        sum += next_iteration[num]->upper[codon] * gsl_matrix_get(eigenvector, codon, col);
+                    }
+                    next_iteration[num]->down_projection[col] = sum;
                 }
-                next_iteration[num]->down_projection[col] = sum;
+            } else {
+                gsl_complex sum;
+                for (int col = 0; col < 64; col++) {
+                    sum = gsl_complex_rect(0.0, 0.0);
+                    for (int codon = 0; codon < 64; codon++) {
+                        sum = gsl_complex_add(sum, gsl_complex_mul_real(gsl_matrix_complex_get(eigenvector_com, codon, col), next_iteration[num]->upper[codon]));
+                    }
+                    next_iteration[num]->down_projection_com[col] = sum;
+                }
             }
             if (!(next_iteration[num]->previous.empty())) {
                 next_iteration.push_back(next_iteration[num]->previous[0]);
@@ -351,25 +377,17 @@ void changing_to_nonneg_matrix(gsl_matrix *qmatrix) {
 }
 
 //Integrating all the expectation steps
-double EM_algorithm(std::vector<std::vector<aligned_codon>> aligned_codon_set, newick_start *start, newick_graph *end, gsl_matrix *total_count, gsl_matrix *eigencount, gsl_matrix *eigencount_col,
-                              gsl_matrix *qmatrix, gsl_matrix *eigenvector, gsl_matrix *eigen_inverse, gsl_vector *eigenvalue, double *codon_freq, int *newick_order_max, double *omega) {
+/*double EM_algorithm(std::vector<std::vector<aligned_codon>> aligned_codon_set, newick_start *start, newick_graph *end, gsl_matrix *total_count, gsl_matrix *eigencount, gsl_matrix *eigencount_col,
+                              gsl_matrix *qmatrix, gsl_matrix *eigenvector, gsl_matrix *eigen_inverse, gsl_vector *eigenvalue, double *codon_freq, int *newick_order_max, double *omega,
+                              gsl_matrix_complex *eigen_inverse_com, gsl_matrix_complex *eigen_com, bool eigen_is_complex) {
 
     double joint_likelihood = 0.0;
 
     gsl_matrix_set_all(eigencount, 0.0);
 
-    gsl_matrix *qmatrix_temp = gsl_matrix_alloc(64, 64);//freed
-
-    gsl_matrix_memcpy(qmatrix_temp, qmatrix);
-
-    get_eigenvector_and_inverse(qmatrix_temp, eigenvector, eigen_inverse, eigenvalue);
-    gsl_matrix_free(qmatrix_temp);
-
-    set_matrices(start, eigenvector, eigen_inverse, eigenvalue, newick_order_max);
-
     double element, denominator, sum;
 
-    for (int num = 0; num < 2000; num++) {
+    for (int num = 0; num < 10000; num++) {
         std::vector<newick_graph *> next_iterator = start->next;
         for (size_t num = 0; num < next_iterator.size(); num++) {
             for (char base = 0; base < 64; base++) {
@@ -379,7 +397,7 @@ double EM_algorithm(std::vector<std::vector<aligned_codon>> aligned_codon_set, n
 
         denominator = 0.0;
 
-        denominator = conduct_felsenstein(start, aligned_codon_set[num], eigen_inverse, newick_order_max, end, codon_freq);
+        denominator = conduct_felsenstein(start, aligned_codon_set[num], eigen_inverse_com, eigen_inverse, newick_order_max, end, codon_freq, eigen_is_complex);
         if (denominator == 0) {
             std::cout << "denominator is 0" << std::endl;
             exit(-1);
@@ -397,7 +415,6 @@ double EM_algorithm(std::vector<std::vector<aligned_codon>> aligned_codon_set, n
             size = iterator.size();
             for (int num = 0; num < size; num++) {
                 if (iterator[num]->order == order) {
-                    // Todo: Do something
                     for (int row = 0; row < 64; row++) {
                         for (int col = 0; col < 64; col++) {
                             gsl_matrix_set(eigencount_col, row, col, gsl_matrix_get(eigencount_col, row, col) +
@@ -423,16 +440,19 @@ double EM_algorithm(std::vector<std::vector<aligned_codon>> aligned_codon_set, n
 
     for (int row = 0; row < 64; row++) {
         for (int col = 0; col < 64; col++) {
-            if (row >= col) {
-                sum = 0.0;
-                for (int k = 0; k < 64; k++) {
-                    element = 0.0;
-                    for (int l = 0; l < 64; l++) {
-                        element += gsl_matrix_get(eigenvector, col, l) * gsl_matrix_get(eigencount, k, l);
-                    }
-                    sum += gsl_matrix_get(eigen_inverse, k, row) * element;
+            sum = 0.0;
+            for (int k = 0; k < 64; k++) {
+                element = 0.0;
+                for (int l = 0; l < 64; l++) {
+                    element += gsl_matrix_get(eigenvector, col, l) * gsl_matrix_get(eigencount, k, l);
                 }
+                sum += gsl_matrix_get(eigen_inverse, k, row) * element;
+            }
+            if ((row != col && gsl_matrix_get(qmatrix, row, col) * sum >= 0.0) || (row == col && gsl_matrix_get(qmatrix, row, col) * sum <= 0)) {
                 gsl_matrix_set(total_count, row, col, gsl_matrix_get(qmatrix, row, col) * sum);
+            } else {
+                std::cout << "count is weird" << std::endl;
+                exit(-1);
             }
         }
     }
@@ -440,10 +460,11 @@ double EM_algorithm(std::vector<std::vector<aligned_codon>> aligned_codon_set, n
         omega[i] = gsl_matrix_get(total_count, i, i) / gsl_matrix_get(qmatrix, i, i);
     }
 
+    //trying to make reversible
     for (int row = 0; row < 64; row++) {
         for (int col = 0; col < 64; col++) {
-            if (row > col) {
-                gsl_matrix_set(qmatrix, row, col, gsl_matrix_get(total_count, row, col) / omega[row]);
+            if (row < col) {
+                gsl_matrix_set(qmatrix, row, col, gsl_matrix_get(total_count, row, col) / omega[row] + gsl_matrix_get(total_count, col, row) / omega[col]);
                 gsl_matrix_set(qmatrix, col, row, gsl_matrix_get(qmatrix, row, col) * codon_freq[col] / codon_freq[row]);
             }
         }
@@ -458,15 +479,23 @@ double EM_algorithm(std::vector<std::vector<aligned_codon>> aligned_codon_set, n
         }
         gsl_matrix_set(qmatrix, row, row, -sum);
     }
-    //changing_to_nonneg_matrix(qmatrix);
 
-
-    gsl_vector *scale = gsl_vector_alloc(64);
-    for (int i = 0; i < 64; i++) {
-        gsl_vector_set(scale, i, codon_freq[i]);
+    double sum_codon_freq = 1.0;
+    codon_freq[0] = 1.0;
+    for (int i = 1; i < 64; i++) {
+        codon_freq[i] = gsl_matrix_get(qmatrix, 0, i) / gsl_matrix_get(qmatrix, i, 0);
+        sum_codon_freq += codon_freq[i];
     }
-    gsl_matrix_scale_columns(qmatrix, scale);
-    gsl_vector_free(scale);
+    for (int i = 0; i < 64; i++) {
+        codon_freq[i] /= sum_codon_freq;
+    }
+
+    sum = 0.0;
+    for (size_t dia = 0; dia < 64; dia++) {
+        sum -= gsl_matrix_get(qmatrix, dia, dia) * codon_freq[dia];
+    }
+    gsl_matrix_scale(qmatrix, 1 / sum);
+
     for (size_t row = 0; row < 64; row++) {
         for (size_t col = 0; col < 64; col++) {
             std::cout << gsl_matrix_get(qmatrix, row, col) << ", ";
@@ -474,6 +503,5 @@ double EM_algorithm(std::vector<std::vector<aligned_codon>> aligned_codon_set, n
         std::cout << std::endl;
     }
 
-    normalizing_qmatrix(qmatrix, codon_freq, qmatrix);
     return joint_likelihood;
-}
+}*/

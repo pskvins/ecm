@@ -4,6 +4,7 @@
 #include "newick.cpp"
 #include "expectation_step.cpp"
 #include "process_maf.cpp"
+#include "EM_algorithm_complex.cpp"
 #include "process_maf.h"
 #include <gsl/gsl_eigen.h>
 
@@ -83,30 +84,12 @@ int main() {
     gsl_vector *x = gsl_vector_alloc(2016);//freed
 
     for (int i = 0; i < 2016 ; i++) {
-        gsl_vector_set(x, i, exchange[i] + 0.3);
-    }
-    /*for (int i = 0; i < 2016; i++) {
-        switch (i % 5) {
-            case 0 :
-                gsl_vector_set(x, i, 0.1);
-                break;
-            case 1 :
-                gsl_vector_set(x, i, 0.2);
-                break;
-            case 2 :
-                gsl_vector_set(x, i, 0.3);
-                break;
-            case 3 :
-                gsl_vector_set(x, i, 0.4);
-                break;
-            case 4 :
-                gsl_vector_set(x, i, 0.5);
-                break;
-            default :
-                gsl_vector_set(x, i, 0.6);
-                break;
+        if (exchange[i] != 0) {
+            gsl_vector_set(x, i, exchange[i]);
+        } else {
+            gsl_vector_set(x, i, 0.001);
         }
-    }*/
+    }
 
     for (size_t row = 1; row < 64; row++) {
         for (size_t col = 0; col < 64; col++) {
@@ -159,11 +142,15 @@ int main() {
     gsl_matrix *eigenvector = gsl_matrix_alloc(64, 64);//freed
     gsl_matrix *eigenvec_inverse = gsl_matrix_alloc(64, 64);//freed
     gsl_vector *eigenvalue = gsl_vector_alloc(64);//freed
-    gsl_matrix *expon_qmatrix = gsl_matrix_alloc(64, 64);
+    gsl_vector_complex *eigenvalue_com = gsl_vector_complex_alloc(64);//freed
+    gsl_matrix_complex *eigenvector_com = gsl_matrix_complex_alloc(64, 64);//freed
+    gsl_matrix_complex *eigenvec_inverse_com = gsl_matrix_complex_alloc(64, 64);//freed
 
-    gsl_matrix *total_count = gsl_matrix_alloc(64, 64);
-    gsl_matrix *eigencount = gsl_matrix_alloc(64, 64);
-    gsl_matrix *eigencount_col = gsl_matrix_alloc(64, 64);
+    gsl_matrix *total_count = gsl_matrix_alloc(64, 64);//freed
+    gsl_matrix *eigencount = gsl_matrix_alloc(64, 64);//freed
+    gsl_matrix *eigencount_col = gsl_matrix_alloc(64, 64);//freed
+    gsl_matrix_complex *eigencount_com = gsl_matrix_complex_alloc(64, 64);//freed
+    gsl_matrix_complex *eigencount_col_com = gsl_matrix_complex_alloc(64, 64);//freed
 
     normalizing_qmatrix(qmatrix, coding_freq, qmatrix);
 
@@ -172,12 +159,216 @@ int main() {
     double likelihood = 0.0;
     double likelihood_old = 1.0;
     int count = 0;
+    bool eigen_is_complex = false;
+    gsl_matrix *qmatrix_temp = gsl_matrix_alloc(64, 64);//freed
 
     while (abs(likelihood - likelihood_old) > 1.0e-8) {
+        eigen_is_complex = false;
         likelihood_old = likelihood;
+        likelihood = 0.0;
         std::cout << "Iteration start : " << count << std::endl;
-        likelihood = EM_algorithm(aligned_codon_set, start_point, end_point, total_count, eigencount, eigencount_col,
-        qmatrix, eigenvector, eigenvec_inverse, eigenvalue, coding_freq, newick_order_max, omega);
+
+        gsl_matrix_memcpy(qmatrix_temp, qmatrix);
+
+        get_eigenvector_and_inverse(qmatrix_temp, eigenvector, eigenvec_inverse, eigenvalue, eigenvector_com, eigenvalue_com, eigen_is_complex);
+
+        if (eigen_is_complex == false) {
+            set_matrices(start_point, eigenvector, eigenvec_inverse, eigenvalue, newick_order_max);
+        } else {
+            get_inverse_of_eigenvec_com(eigenvector_com, eigenvec_inverse_com);
+
+            for (int row = 0; row < 64; row++) {
+                for (int col = 0; col < 64; col++) {
+                    gsl_matrix_complex_set(eigenvector_com, row, col,
+                                           gsl_complex_mul(gsl_matrix_complex_get(eigenvector_com, row, col), gsl_vector_complex_get(eigenvalue_com, col)));
+                }
+            }
+
+            set_matrices_complex(start_point, eigenvector_com, eigenvec_inverse_com, eigenvalue_com, newick_order_max);
+        }
+
+        ///////////////////////////
+        //start of expectation step
+        gsl_matrix_set_all(eigencount, 0.0);
+        gsl_complex default_element = gsl_complex_rect(0.0, 0.0);
+        gsl_matrix_complex_set_all(eigencount_com, default_element);
+
+        double element, denominator, sum;
+
+        for (int num = 0; num < 10000; num++) {
+            std::vector<newick_graph *> next_iterator = start_point->next;
+            for (size_t num = 0; num < next_iterator.size(); num++) {
+                for (char base = 0; base < 64; base++) {
+                    next_iterator[num]->base[base] = false;
+                }
+            }
+
+            denominator = 0.0;
+
+            denominator = conduct_felsenstein(start_point, aligned_codon_set[num], eigenvec_inverse, eigenvec_inverse_com, newick_order_max, end_point, coding_freq, eigen_is_complex);
+            if (denominator == 0) {
+                std::cout << "denominator is 0" << std::endl;
+                exit(-1);
+            }
+            likelihood += denominator;
+            denominator = 1 / denominator;
+
+            calculate_upper(end_point, coding_freq, eigenvector, eigenvector_com, eigen_is_complex);
+
+            int order = *newick_order_max;
+            std::vector<newick_graph*> iterator = start_point->next;
+            size_t size;
+            gsl_matrix_set_all(eigencount_col, 0.0);
+            gsl_matrix_complex_set_all(eigencount_col_com, default_element);
+            if (eigen_is_complex == false) {
+                while (order >= 0) {
+                    size = iterator.size();
+                    for (int num = 0; num < size; num++) {
+                        if (iterator[num]->order == order) {
+                            for (int row = 0; row < 64; row++) {
+                                for (int col = 0; col < 64; col++) {
+                                    gsl_matrix_set(eigencount_col, row, col, gsl_matrix_get(eigencount_col, row, col) + next_iterator[num]->down_projection[row] *
+                                                                             next_iterator[num]->up_projection[col] * gsl_matrix_get(next_iterator[num]->expon_eigen, row, col));
+                                }
+                            }
+                            if (std::find(iterator.begin(), iterator.end(), iterator[num]->next) == iterator.end()) {
+                                if (iterator[num]->next != NULL) {
+                                    iterator.emplace_back(iterator[num]->next);
+                                }
+                            }
+                            iterator.erase(iterator.begin() + num);
+                            num--;
+                            size--;
+                        }
+                    }
+                    order--;
+                }
+            } else {
+                while (order >= 0) {
+                    size = iterator.size();
+                    for (int num = 0; num < size; num++) {
+                        if (iterator[num]->order == order) {
+                            for (int row = 0; row < 64; row++) {
+                                for (int col = 0; col < 64; col++) {
+                                    gsl_matrix_complex_set(eigencount_col_com, row, col, gsl_complex_add(gsl_matrix_complex_get(eigencount_col_com, row, col),
+                                    gsl_complex_mul(gsl_complex_mul(iterator[num]->down_projection_com[row], gsl_matrix_complex_get(iterator[num]->expon_eigen_com, row, col)),
+                                                                           iterator[num]->up_projection_com[col])));
+                                }
+                            }
+                            if (std::find(iterator.begin(), iterator.end(), iterator[num]->next) == iterator.end()) {
+                                if (iterator[num]->next != NULL) {
+                                    iterator.emplace_back(iterator[num]->next);
+                                }
+                            }
+                            iterator.erase(iterator.begin() + num);
+                            num--;
+                            size--;
+                        }
+                    }
+                    order--;
+                }
+            }
+            if (eigen_is_complex == false) {
+                gsl_matrix_scale(eigencount_col, denominator);
+                gsl_matrix_add(eigencount, eigencount_col);
+            } else {
+                gsl_complex denominator_to_complex = gsl_complex_rect(denominator, 0.0);
+                gsl_matrix_complex_scale(eigencount_col_com, denominator_to_complex);
+                gsl_matrix_complex_add(eigencount_com, eigencount_col_com);
+            }
+        }
+
+        for (int row = 0; row < 64; row++) {
+            for (int col = 0; col < 64; col++) {
+                if (eigen_is_complex == false) {
+                    sum = 0.0;
+                    for (int k = 0; k < 64; k++) {
+                        element = 0.0;
+                        for (int l = 0; l < 64; l++) {
+                            element += gsl_matrix_get(eigenvector, col, l) * gsl_matrix_get(eigencount, k, l);
+                        }
+                        sum += gsl_matrix_get(eigenvec_inverse, k, row) * element;
+                    }
+                    if ((row != col && gsl_matrix_get(qmatrix, row, col) * sum >= 0.0) ||
+                        (row == col && gsl_matrix_get(qmatrix, row, col) * sum <= 0)) {
+                        gsl_matrix_set(total_count, row, col, gsl_matrix_get(qmatrix, row, col) * sum);
+                    } else {
+                        std::cout << "count is weird : (" << row << ", " << col << ", "
+                                  << gsl_matrix_get(qmatrix, row, col) * sum << ")" << std::endl;
+                        exit(-1);
+                    }
+                } else {
+                    sum = 0.0;
+                    for (int k = 0; k < 64; k++) {
+                        default_element = gsl_complex_rect(0.0, 0.0);
+                        for (int l = 0; l < 64; l++) {
+                            default_element = gsl_complex_add(default_element, gsl_complex_mul(gsl_matrix_complex_get(eigenvector_com, col, l), gsl_matrix_complex_get(eigencount_com, k, l)));
+                        }
+                        sum += gsl_complex_mul(gsl_matrix_complex_get(eigenvec_inverse_com, k, row), default_element).dat[0];
+                    }
+                    if ((row != col && gsl_matrix_get(qmatrix, row, col) * sum >= 0.0) ||
+                        (row == col && gsl_matrix_get(qmatrix, row, col) * sum <= 0)) {
+                        gsl_matrix_set(total_count, row, col, gsl_matrix_get(qmatrix, row, col) * sum);
+                    } else {
+                        std::cout << "count is weird : (" << row << ", " << col << ", "
+                                  << gsl_matrix_get(qmatrix, row, col) * sum << ")" << std::endl;
+                        exit(-1);
+                    }
+                }
+            }
+        }
+        for (int i = 0; i < 64; i++) {
+            omega[i] = gsl_matrix_get(total_count, i, i) / gsl_matrix_get(qmatrix, i, i);
+            std::cout << "omega" << i << " : " << omega[i] << std::endl;
+            if (abs(omega[i]) == 1.0e-14) {
+                std::cout << "omega being 0, stop the process" << std::endl;
+                exit(-1);
+            }
+        }
+
+        //trying to make reversible
+        for (int row = 0; row < 64; row++) {
+            for (int col = 0; col < 64; col++) {
+                //if (row < col) {
+                    gsl_matrix_set(qmatrix, row, col, gsl_matrix_get(total_count, row, col) / omega[row]);
+                    //gsl_matrix_set(qmatrix, col, row, gsl_matrix_get(qmatrix, row, col) * coding_freq[col] / coding_freq[row]);
+                //}
+            }
+        }
+
+        for (int row = 0; row < 64; row++) {
+            sum = 0.0;
+            for (int col = 0; col < 64; col++) {
+                if (row != col) {
+                    sum += gsl_matrix_get(qmatrix, row, col);
+                }
+            }
+            gsl_matrix_set(qmatrix, row, row, -sum);
+        }
+
+        /*double sum_codon_freq = 1.0;
+        codon_freq[0] = 1.0;
+        for (int i = 1; i < 64; i++) {
+            codon_freq[i] = gsl_matrix_get(qmatrix, 0, i) / gsl_matrix_get(qmatrix, i, 0);
+            sum_codon_freq += codon_freq[i];
+        }
+        for (int i = 0; i < 64; i++) {
+            codon_freq[i] /= sum_codon_freq;
+        }*/
+
+        /*sum = 0.0;
+        for (size_t dia = 0; dia < 64; dia++) {
+            sum -= gsl_matrix_get(qmatrix, dia, dia) * coding_freq[dia];
+        }
+        gsl_matrix_scale(qmatrix, 1 / sum);*/
+
+        for (size_t row = 0; row < 64; row++) {
+            for (size_t col = 0; col < 64; col++) {
+                std::cout << gsl_matrix_get(qmatrix, row, col) << ", ";
+            }
+            std::cout << std::endl;
+        }
+        /////////////////////////////////////////////////////////////////////////
         std::cout << "likelihood : " << likelihood << std::endl;
         std::cout << "Difference : " << abs(likelihood - likelihood_old) << std::endl;
         count++;
@@ -186,11 +377,16 @@ int main() {
     gsl_matrix_free(eigenvector);
     gsl_matrix_free(eigenvec_inverse);
     gsl_vector_free(eigenvalue);
-    gsl_matrix_free(expon_qmatrix);
     gsl_matrix_free(total_count);
     gsl_matrix_free(eigencount);
     gsl_matrix_free(eigencount_col);
     gsl_vector_free(x);
+    gsl_matrix_complex_free(eigenvector_com);
+    gsl_vector_complex_free(eigenvalue_com);
+    gsl_matrix_complex_free(eigenvec_inverse_com);
+    gsl_matrix_free(qmatrix_temp);
+    gsl_matrix_complex_free(eigencount_com);
+    gsl_matrix_complex_free(eigencount_col_com);
 
     gsl_vector *scale = gsl_vector_alloc(64);
     for (int i = 0; i < 64; i++) {
