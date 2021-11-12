@@ -9,8 +9,7 @@
 #include <gsl/gsl_blas.h>
 #include <gsl/gsl_linalg.h>
 #include "process_maf.h"
-#include <assert.h>
-#include <omp.h>
+#include <cstdlib>
 #include <random>
 #include <chrono>
 
@@ -114,7 +113,6 @@ void get_eigenvector_and_inverse(gsl_matrix *qmatrix_temp, gsl_matrix *eigenvect
     gsl_eigen_nonsymmv_free(eigen_space);
 
     // check if all the eigenvalues are real && make exponential of diagonal matrix
-    //Todo do I have to correct machine precision? Would it affect the result a lot? (Corrected just in case)
     gsl_complex check;
     for (size_t i = 0; i < 64; i++) {
         check = gsl_vector_complex_get(eigenvalue_com, i);

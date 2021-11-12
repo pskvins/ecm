@@ -3,14 +3,11 @@
 //
 
 #include <algorithm>
-#include <gsl/gsl_eigen.h>
 #include <gsl/gsl_math.h>
 #include <gsl/gsl_complex_math.h>
 #include <gsl/gsl_blas.h>
 #include <gsl/gsl_linalg.h>
-#include "process_maf.h"
 #include <assert.h>
-#include <omp.h>
 
 void get_inverse_of_eigenvec_com(gsl_matrix_complex *eigenvector_com, gsl_matrix_complex *eigenvec_inverse_com) {
     gsl_matrix_complex_memcpy(eigenvec_inverse_com, eigenvector_com);
@@ -36,7 +33,7 @@ gsl_matrix* calculate_expon_matrix_com(gsl_matrix_complex *eigenvector_com, gsl_
             for (int i = 0; i < 64; i++) {
                 if (gsl_vector_complex_get(eigenvalue_com, i).dat[1] == 0.0) {
                     element += gsl_matrix_complex_get(eigenvector_com, row, i).dat[0] *
-                            gsl_vector_get(eigenvalue_temp, i) * gsl_matrix_complex_get(eigenvec_inverse_com, i, col).dat[0];
+                            gsl_vector_get(ck, i) * gsl_matrix_complex_get(eigenvec_inverse_com, i, col).dat[0];
                 } else if (gsl_vector_complex_get(eigenvalue_com, i).dat[1] > 0.0) {
                     element += 2 * (gsl_vector_get(ck, i) *
                             (gsl_matrix_complex_get(eigenvector_com, row, i).dat[0] * gsl_matrix_complex_get(eigenvec_inverse_com, i, col).dat[0] -
@@ -46,11 +43,7 @@ gsl_matrix* calculate_expon_matrix_com(gsl_matrix_complex *eigenvector_com, gsl_
                             gsl_matrix_complex_get(eigenvector_com, row, i).dat[1] * gsl_matrix_complex_get(eigenvec_inverse_com, i, col).dat[0]));
                 }
             }
-            gsl_matrix_set(eigenvector_temp, row, col, element);
-            if (element > 1 || element < 0) {
-                std::cout << "Probability out of range : " << element << std::endl;
-                exit(-1);
-            }
+            gsl_matrix_set(eigenvector_temp, row, col, std::min(1.0, std::max(0.0, element)));
         }
     }
     return eigenvector_temp;
@@ -73,6 +66,9 @@ void set_matrices_complex(newick_start *start, gsl_matrix_complex *eigenvector_c
                 gsl_matrix_memcpy(next_iterator[num]->expon_matrix, calculate_expon_matrix_com(eigenvector_com, eigen_inverse_com, eigenvalue_com, eigenvector_temp, eigenvalue_temp, branch_length, ck, sk));
                 for (int row = 0; row < 64; row++) {
                     for (int col = 0; col < 64; col++) {
+                        if (gsl_matrix_get(next_iterator[num]->expon_matrix, row, col) == 0) {
+                            next_iterator[num]->zero_entries.push_back(row * 64 + col);
+                        }
                         if (row == col) {
                             element = gsl_complex_rect(branch_length * gsl_vector_get(ck, row), branch_length * gsl_vector_get(sk, row));
                             gsl_matrix_complex_set(next_iterator[num]->expon_eigen_com, row, col, element);

@@ -20,7 +20,7 @@ struct newick_graph {
     std::vector<newick_graph*> previous;
     double felsenstein[64];
     double upper[64];
-    gsl_matrix *updated_upper;
+    std::vector<int> zero_entries;
     bool base[64];
     gsl_matrix *expon_matrix;
     gsl_matrix *expon_eigen;
@@ -50,7 +50,6 @@ struct newick_graph {
             down_projection_com[num].dat[1] = 0.0;
         }
         expon_matrix = gsl_matrix_alloc(64, 64);
-        updated_upper = gsl_matrix_alloc(64, 64);
         expon_eigen = gsl_matrix_alloc(64, 64);
         expon_eigen_com = gsl_matrix_complex_alloc(64, 64);
 
